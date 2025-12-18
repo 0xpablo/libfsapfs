@@ -644,6 +644,7 @@ AC_DEFUN([AX_LIBCRYPTO_CHECK_LIB],
       [AS_IF(
         [test -d "$ac_cv_with_openssl"],
         [CFLAGS="$CFLAGS -I${ac_cv_with_openssl}/include"
+        CPPFLAGS="$CPPFLAGS -I${ac_cv_with_openssl}/include"
         LDFLAGS="$LDFLAGS -L${ac_cv_with_openssl}/lib"],
         [AC_MSG_FAILURE(
           [no such directory: $ac_cv_with_openssl],
@@ -678,12 +679,12 @@ AC_DEFUN([AX_LIBCRYPTO_CHECK_LIB],
     ])
     AX_LIBCRYPTO_CHECK_OPENSSL_EVP
 
-    AS_IF(
-      [test "x$ac_cv_libcrypto" != xno],
-      [AC_DEFINE(
-        [HAVE_LIBCRYPTO],
-        [1],
-        [Define to 1 if you have the 'crypto' library (-lcrypto).])
+      AS_IF(
+        [test "x$ac_cv_libcrypto" != xno],
+        [AC_DEFINE(
+          [HAVE_LIBCRYPTO],
+          [1],
+          [Define to 1 if you have the 'crypto' library (-lcrypto).])
 
       ac_cv_libcrypto_CPPFLAGS="$openssl_CFLAGS"
       ac_cv_libcrypto_LIBADD="$openssl_LIBS"
@@ -691,6 +692,21 @@ AC_DEFUN([AX_LIBCRYPTO_CHECK_LIB],
       AS_IF(
         [test "x$ac_cv_libcrypto_LIBADD" = x],
         [ac_cv_libcrypto_LIBADD="-lcrypto"])
+
+      dnl Append libcrypto include and library search paths for configure-time checks.
+      dnl Note that AC_CHECK_LIB appends "-lcrypto" after LDFLAGS, so -L* must be in LDFLAGS.
+      CPPFLAGS="$CPPFLAGS $ac_cv_libcrypto_CPPFLAGS"
+
+      ac_cv_libcrypto_extra_LDFLAGS=""
+      for ac_cv_libcrypto_arg in $ac_cv_libcrypto_LIBADD;
+      do
+        case $ac_cv_libcrypto_arg in
+          -L*|-Wl,*|-F*)
+            ac_cv_libcrypto_extra_LDFLAGS="$ac_cv_libcrypto_extra_LDFLAGS $ac_cv_libcrypto_arg"
+            ;;
+        esac
+      done
+      LDFLAGS="$LDFLAGS $ac_cv_libcrypto_extra_LDFLAGS"
 
       dnl On Cygwin also link zlib since libcrypto relies on it
       AS_CASE(
@@ -996,4 +1012,3 @@ AC_DEFUN([AX_LIBCRYPTO_CHECK_ENABLE],
       [openssl-devel])
     ])
   ])
-
