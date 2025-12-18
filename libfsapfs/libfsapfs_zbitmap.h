@@ -1,5 +1,5 @@
 /*
- * Input/Output (IO) handle functions
+ * ZBITMAP (ZBM) decompression functions
  *
  * Copyright (C) 2018-2025, Joachim Metz <joachim.metz@gmail.com>
  *
@@ -19,63 +19,28 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#if !defined( _LIBFSAPFS_IO_HANDLE_H )
-#define _LIBFSAPFS_IO_HANDLE_H
+#if !defined( _LIBFSAPFS_ZBITMAP_H )
+#define _LIBFSAPFS_ZBITMAP_H
 
 #include <common.h>
 #include <types.h>
 
 #include "libfsapfs_libcerror.h"
-#include "libfsapfs_profiler.h"
 
 #if defined( __cplusplus )
 extern "C" {
 #endif
 
-extern const char fsapfs_container_signature[ 4 ];
-extern const char fsapfs_volume_signature[ 4 ];
-
-typedef struct libfsapfs_io_handle libfsapfs_io_handle_t;
-
-struct libfsapfs_io_handle
-{
-	/* The bytes per sector
-	 */
-	uint16_t bytes_per_sector;
-
-	/* The block size
-	 */
-	uint32_t block_size;
-
-	/* The container size
-	 */
-	size64_t container_size;
-
-#if defined( HAVE_PROFILER )
-	/* The profiler
-	 */
-	libfsapfs_profiler_t *profiler;
-#endif
-
-	/* Value to indicate if abort was signalled
-	 */
-	int abort;
-};
-
-int libfsapfs_io_handle_initialize(
-     libfsapfs_io_handle_t **io_handle,
-     libcerror_error_t **error );
-
-int libfsapfs_io_handle_free(
-     libfsapfs_io_handle_t **io_handle,
-     libcerror_error_t **error );
-
-int libfsapfs_io_handle_clear(
-     libfsapfs_io_handle_t *io_handle,
+int libfsapfs_zbitmap_decompress(
+     const uint8_t *compressed_data,
+     size_t compressed_data_size,
+     uint8_t *uncompressed_data,
+     size_t *uncompressed_data_size,
      libcerror_error_t **error );
 
 #if defined( __cplusplus )
 }
 #endif
 
-#endif /* !defined( _LIBFSAPFS_IO_HANDLE_H ) */
+#endif /* !defined( _LIBFSAPFS_ZBITMAP_H ) */
+

@@ -25,6 +25,7 @@
 #include <types.h>
 
 #include "libfsapfs_debug.h"
+#include "libfsapfs_definitions.h"
 #include "libfsapfs_file_extent.h"
 #include "libfsapfs_libcerror.h"
 #include "libfsapfs_libcnotify.h"
@@ -141,6 +142,7 @@ int libfsapfs_file_extent_free(
  */
 int libfsapfs_file_extent_read_key_data(
      libfsapfs_file_extent_t *file_extent,
+     uint8_t file_system_data_type,
      const uint8_t *data,
      size_t data_size,
      libcerror_error_t **error )
@@ -150,6 +152,8 @@ int libfsapfs_file_extent_read_key_data(
 #if defined( HAVE_DEBUG_OUTPUT )
 	uint64_t value_64bit  = 0;
 #endif
+	uint64_t logical_address = 0;
+	uint64_t file_system_identifier = 0;
 
 	if( file_extent == NULL )
 	{
@@ -197,9 +201,20 @@ int libfsapfs_file_extent_read_key_data(
 		 LIBCNOTIFY_PRINT_DATA_FLAG_GROUP_DATA );
 	}
 #endif
+	file_extent->file_system_data_type = file_system_data_type;
+
+	byte_stream_copy_to_uint64_little_endian(
+	 ( (fsapfs_file_system_btree_key_file_extent_t *) data )->file_system_identifier,
+	 file_system_identifier );
+
+	file_extent->identifier = file_system_identifier & 0x0fffffffffffffffUL;
+
 	byte_stream_copy_to_uint64_little_endian(
 	 ( (fsapfs_file_system_btree_key_file_extent_t *) data )->logical_address,
-	 file_extent->logical_offset );
+	 logical_address );
+
+	file_extent->logical_offset        = logical_address & 0x00ffffffffffffffUL;
+	file_extent->logical_address_flags = (uint8_t) ( logical_address >> 56 );
 
 #if defined( HAVE_DEBUG_OUTPUT )
 	if( libcnotify_verbose != 0 )
@@ -215,7 +230,16 @@ int libfsapfs_file_extent_read_key_data(
 		libcnotify_printf(
 		 "%s: logical address\t\t\t: 0x%08" PRIx64 "\n",
 		 function,
-		 file_extent->logical_offset );
+		 logical_address );
+
+		if( file_extent->logical_address_flags != 0 )
+		{
+			libcnotify_printf(
+			 "%s: logical offset\t\t\t: 0x%08" PRIx64 " (flags: 0x%02" PRIx8 ")\n",
+			 function,
+			 file_extent->logical_offset,
+			 file_extent->logical_address_flags );
+		}
 
 		libcnotify_printf(
 		 "\n" );
@@ -230,6 +254,7 @@ int libfsapfs_file_extent_read_key_data(
  */
 int libfsapfs_file_extent_read_value_data(
      libfsapfs_file_extent_t *file_extent,
+     uint8_t file_system_data_type,
      const uint8_t *data,
      size_t data_size,
      libcerror_error_t **error )
@@ -262,8 +287,7 @@ int libfsapfs_file_extent_read_value_data(
 
 		return( -1 );
 	}
-	if( ( data_size < sizeof( fsapfs_file_system_btree_value_file_extent_t ) )
-	 || ( data_size > (size_t) SSIZE_MAX ) )
+	if( ( data_size > (size_t) SSIZE_MAX ) )
 	{
 		libcerror_error_set(
 		 error,
@@ -286,6 +310,67 @@ int libfsapfs_file_extent_read_value_data(
 		 LIBCNOTIFY_PRINT_DATA_FLAG_GROUP_DATA );
 	}
 #endif
+	file_extent->file_system_data_type = file_system_data_type;
+
+	if( file_system_data_type == LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT2 )
+	{
+		if( ( data_size < 35 )
+		 || ( data_size > (size_t) SSIZE_MAX ) )
+		{
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+			 LIBCERROR_RUNTIME_ERROR_VALUE_OUT_OF_BOUNDS,
+			 "%s: invalid data size value out of bounds.",
+			 function );
+
+			return( -1 );
+		}
+		file_extent->data_size           = 0;
+		file_extent->physical_block_number = 0;
+		file_extent->encryption_identifier = 0;
+		file_extent->has_sha256_digest     = 0;
+
+		/* Observed format:
+		 *   uint8_t type    = 0x04
+		 *   uint8_t unknown = 0x00
+		 *   uint8_t length  = 0x20 (32)
+		 *   uint8_t digest[32] (SHA-256)
+		 */
+		if( ( data[ 0 ] == 0x04 )
+		 && ( data[ 1 ] == 0x00 )
+		 && ( data[ 2 ] == 0x20 ) )
+		{
+			if( memory_copy(
+			     file_extent->sha256_digest,
+			     &( data[ 3 ] ),
+			     32 ) == NULL )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_MEMORY,
+				 LIBCERROR_MEMORY_ERROR_COPY_FAILED,
+				 "%s: unable to copy SHA-256 digest.",
+				 function );
+
+				return( -1 );
+			}
+			file_extent->has_sha256_digest = 1;
+		}
+		return( 1 );
+	}
+	if( ( data_size < sizeof( fsapfs_file_system_btree_value_file_extent_t ) )
+	 || ( data_size > (size_t) SSIZE_MAX ) )
+	{
+		libcerror_error_set(
+		 error,
+		 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+		 LIBCERROR_RUNTIME_ERROR_VALUE_OUT_OF_BOUNDS,
+		 "%s: invalid data size value out of bounds.",
+		 function );
+
+		return( -1 );
+	}
 	byte_stream_copy_to_uint64_little_endian(
 	 ( (fsapfs_file_system_btree_value_file_extent_t *) data )->data_size_and_flags,
 	 file_extent->data_size );
@@ -330,4 +415,3 @@ int libfsapfs_file_extent_read_value_data(
 
 	return( 1 );
 }
-

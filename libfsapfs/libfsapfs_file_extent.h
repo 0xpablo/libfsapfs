@@ -35,6 +35,18 @@ typedef struct libfsapfs_file_extent libfsapfs_file_extent_t;
 
 struct libfsapfs_file_extent
 {
+	/* The file system data type
+	 */
+	uint8_t file_system_data_type;
+
+	/* The data stream identifier
+	 */
+	uint64_t identifier;
+
+	/* The logical address flags (for file extents 2)
+	 */
+	uint8_t logical_address_flags;
+
 	/* The logical offset
 	 */
 	uint64_t logical_offset;
@@ -50,6 +62,14 @@ struct libfsapfs_file_extent
 	/* Encryption identifier
 	 */
 	uint64_t encryption_identifier;
+
+	/* The SHA-256 digest (for file extents 2)
+	 */
+	uint8_t sha256_digest[ 32 ];
+
+	/* Value to indicate the SHA-256 digest is set
+	 */
+	uint8_t has_sha256_digest;
 };
 
 int libfsapfs_file_extent_initialize(
@@ -62,12 +82,14 @@ int libfsapfs_file_extent_free(
 
 int libfsapfs_file_extent_read_key_data(
      libfsapfs_file_extent_t *file_extent,
+     uint8_t file_system_data_type,
      const uint8_t *data,
      size_t data_size,
      libcerror_error_t **error );
 
 int libfsapfs_file_extent_read_value_data(
      libfsapfs_file_extent_t *file_extent,
+     uint8_t file_system_data_type,
      const uint8_t *data,
      size_t data_size,
      libcerror_error_t **error );
@@ -77,4 +99,3 @@ int libfsapfs_file_extent_read_value_data(
 #endif
 
 #endif /* !defined( _LIBFSAPFS_FILE_EXTENT_H ) */
-

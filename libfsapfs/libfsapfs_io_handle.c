@@ -258,4 +258,3 @@ int libfsapfs_io_handle_clear(
 #endif
 	return( 1 );
 }
-

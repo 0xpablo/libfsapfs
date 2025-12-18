@@ -25,6 +25,7 @@
 #include "libfsapfs_attribute_values.h"
 #include "libfsapfs_attributes.h"
 #include "libfsapfs_data_stream.h"
+#include "libfsapfs_definitions.h"
 #include "libfsapfs_encryption_context.h"
 #include "libfsapfs_file_extent.h"
 #include "libfsapfs_file_system_btree.h"
@@ -128,6 +129,14 @@ int libfsapfs_attributes_get_data_stream(
      libfdata_stream_t **data_stream,
      libcerror_error_t **error )
 {
+	libfsapfs_file_extent_t *file_extent = NULL;
+	libfsapfs_sealed_extent_tree_t *sealed_extent_tree = NULL;
+	uint64_t data_stream_size            = 0;
+	int extent_index                     = 0;
+	int number_of_extents                = 0;
+	int requires_sealed_extent_tree      = 0;
+	int result                           = 0;
+
 	static char *function = "libfsapfs_attributes_get_data_stream";
 
 	if( attribute_values == NULL )
@@ -162,15 +171,322 @@ int libfsapfs_attributes_get_data_stream(
 				return( -1 );
 			}
 		}
-		if( libfsapfs_data_stream_initialize_from_file_extents(
-		     data_stream,
-		     io_handle,
-		     encryption_context,
+		data_stream_size = attribute_values->value_data_size;
+
+		if( libcdata_array_get_number_of_entries(
 		     attribute_values->value_data_file_extents,
-		     attribute_values->value_data_size,
-		     0,
+		     &number_of_extents,
 		     error ) != 1 )
 		{
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+			 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+			 "%s: unable to retrieve number of attribute value data file extents.",
+			 function );
+
+			return( -1 );
+		}
+		for( extent_index = 0;
+		     extent_index < number_of_extents;
+		     extent_index++ )
+		{
+			if( libcdata_array_get_entry_by_index(
+			     attribute_values->value_data_file_extents,
+			     extent_index,
+			     (intptr_t **) &file_extent,
+			     error ) != 1 )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+				 "%s: unable to retrieve attribute value data file extent: %d.",
+				 function,
+				 extent_index );
+
+				return( -1 );
+			}
+			if( file_extent == NULL )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_VALUE_MISSING,
+				 "%s: missing attribute value data file extent: %d.",
+				 function,
+				 extent_index );
+
+				return( -1 );
+			}
+			if( file_extent->file_system_data_type == LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT2 )
+			{
+				requires_sealed_extent_tree = 1;
+			}
+			if( extent_index < ( number_of_extents - 1 ) )
+			{
+				libfsapfs_file_extent_t *next_file_extent = NULL;
+
+				if( libcdata_array_get_entry_by_index(
+				     attribute_values->value_data_file_extents,
+				     extent_index + 1,
+				     (intptr_t **) &next_file_extent,
+				     error ) != 1 )
+				{
+					libcerror_error_set(
+					 error,
+					 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+					 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+					 "%s: unable to retrieve attribute value data file extent: %d.",
+					 function,
+					 extent_index + 1 );
+
+					return( -1 );
+				}
+				if( next_file_extent == NULL )
+				{
+					libcerror_error_set(
+					 error,
+					 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+					 LIBCERROR_RUNTIME_ERROR_VALUE_MISSING,
+					 "%s: missing attribute value data file extent: %d.",
+					 function,
+					 extent_index + 1 );
+
+					return( -1 );
+				}
+				if( next_file_extent->logical_offset < file_extent->logical_offset )
+				{
+					libcerror_error_set(
+					 error,
+					 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+					 LIBCERROR_RUNTIME_ERROR_VALUE_OUT_OF_BOUNDS,
+					 "%s: invalid attribute value data file extents ordering: %" PRIu64 " < %" PRIu64 ".",
+					 function,
+					 next_file_extent->logical_offset,
+					 file_extent->logical_offset );
+
+					return( -1 );
+				}
+				file_extent->data_size = next_file_extent->logical_offset - file_extent->logical_offset;
+			}
+				else
+				{
+					if( file_extent->logical_offset > data_stream_size )
+					{
+						/* On sealed volumes (FILE_EXTENT2), the attribute value data stream "used size"
+						 * can be smaller than the last extent logical offset (e.g. resource fork backed
+						 * compressed files). Defer sizing until extent2 resolution.
+						 */
+							if( file_extent->file_system_data_type == LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT2 )
+							{
+								file_extent->data_size = 0;
+							}
+						else
+						{
+							libcerror_error_set(
+							 error,
+							 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+							 LIBCERROR_RUNTIME_ERROR_VALUE_OUT_OF_BOUNDS,
+							 "%s: invalid last attribute value data file extent logical offset value out of bounds (logical offset: %" PRIu64 ", data size: %" PRIu64 ", type: 0x%02" PRIx8 ", flags: 0x%02" PRIx8 ").",
+							 function,
+							 file_extent->logical_offset,
+							 data_stream_size,
+							 file_extent->file_system_data_type,
+							 file_extent->logical_address_flags );
+
+							return( -1 );
+						}
+					}
+					else
+					{
+						file_extent->data_size = data_stream_size - file_extent->logical_offset;
+					}
+				}
+				if( file_extent->logical_offset >= data_stream_size )
+				{
+					file_extent->data_size = 0;
+				}
+				else if( file_extent->data_size > ( data_stream_size - file_extent->logical_offset ) )
+				{
+					file_extent->data_size = data_stream_size - file_extent->logical_offset;
+				}
+			}
+
+			/* Remove unused/preallocated extents that are beyond the xattr used size. */
+			for( extent_index = number_of_extents - 1;
+			     extent_index >= 0;
+			     extent_index-- )
+			{
+				libfsapfs_file_extent_t *removed_file_extent = NULL;
+
+				if( libcdata_array_get_entry_by_index(
+				     attribute_values->value_data_file_extents,
+				     extent_index,
+				     (intptr_t **) &file_extent,
+				     error ) != 1 )
+				{
+					libcerror_error_set(
+					 error,
+					 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+					 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+					 "%s: unable to retrieve attribute value data file extent: %d.",
+					 function,
+					 extent_index );
+
+					return( -1 );
+				}
+				if( ( file_extent != NULL )
+				 && ( file_extent->data_size == 0 ) )
+				{
+					if( libcdata_array_remove_entry(
+					     attribute_values->value_data_file_extents,
+					     extent_index,
+					     (intptr_t **) &removed_file_extent,
+					     error ) != 1 )
+					{
+						libcerror_error_set(
+						 error,
+						 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+						 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+						 "%s: unable to remove unused attribute value data file extent: %d.",
+						 function,
+						 extent_index );
+
+						return( -1 );
+					}
+					if( removed_file_extent != NULL )
+					{
+						libfsapfs_file_extent_free(
+						 &removed_file_extent,
+						 NULL );
+					}
+				}
+			}
+			if( libcdata_array_get_number_of_entries(
+			     attribute_values->value_data_file_extents,
+			     &number_of_extents,
+			     error ) != 1 )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+				 "%s: unable to retrieve number of attribute value data file extents.",
+				 function );
+
+				return( -1 );
+			}
+			if( requires_sealed_extent_tree != 0 )
+			{
+			result = libfsapfs_file_system_btree_get_sealed_extent_tree(
+			          file_system_btree,
+			          file_io_handle,
+			          &sealed_extent_tree,
+			          error );
+
+			if( result != 1 )
+			{
+				if( result == 0 )
+				{
+					libcerror_error_set(
+					 error,
+					 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+					 LIBCERROR_RUNTIME_ERROR_VALUE_MISSING,
+					 "%s: missing sealed extent tree root node block number.",
+					 function );
+				}
+				else
+				{
+					libcerror_error_set(
+					 error,
+					 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+					 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+					 "%s: unable to retrieve sealed extent tree.",
+					 function );
+				}
+				return( -1 );
+			}
+			for( extent_index = 0;
+			     extent_index < number_of_extents;
+			     extent_index++ )
+			{
+				uint64_t physical_block_number = 0;
+				uint64_t maximum_data_size     = 0;
+
+				if( libcdata_array_get_entry_by_index(
+				     attribute_values->value_data_file_extents,
+				     extent_index,
+				     (intptr_t **) &file_extent,
+				     error ) != 1 )
+				{
+					libcerror_error_set(
+					 error,
+					 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+					 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+					 "%s: unable to retrieve attribute value data file extent: %d.",
+					 function,
+					 extent_index );
+
+					return( -1 );
+				}
+				if( ( file_extent == NULL )
+				 || ( file_extent->file_system_data_type != LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT2 )
+				 || ( file_extent->data_size == 0 ) )
+				{
+					continue;
+				}
+				result = libfsapfs_sealed_extent_tree_lookup(
+				          sealed_extent_tree,
+				          file_extent->identifier,
+				          file_extent->logical_offset,
+				          &physical_block_number,
+				          &maximum_data_size,
+				          error );
+
+				if( result != 1 )
+				{
+					if( result == 0 )
+					{
+						libcerror_error_set(
+						 error,
+						 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+						 LIBCERROR_RUNTIME_ERROR_VALUE_MISSING,
+						 "%s: sealed extent mapping not found for attribute value data file extent2: %d (identifier: %" PRIu64 ", logical offset: %" PRIu64 ").",
+						 function,
+						 extent_index,
+						 file_extent->identifier,
+						 file_extent->logical_offset );
+					}
+					else
+					{
+						libcerror_error_set(
+						 error,
+						 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+						 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+						 "%s: unable to look up sealed extent mapping for attribute value data file extent2: %d.",
+						 function,
+						 extent_index );
+					}
+					return( -1 );
+				}
+				file_extent->physical_block_number = physical_block_number;
+
+				if( maximum_data_size < file_extent->data_size )
+				{
+					file_extent->data_size = maximum_data_size;
+				}
+			}
+			}
+			if( libfsapfs_data_stream_initialize_from_file_extents(
+			     data_stream,
+			     io_handle,
+			     encryption_context,
+			     attribute_values->value_data_file_extents,
+			     attribute_values->value_data_size,
+			     0,
+			     error ) != 1 )
+			{
 			libcerror_error_set(
 			 error,
 			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
@@ -179,9 +495,9 @@ int libfsapfs_attributes_get_data_stream(
 			 function );
 
 			return( -1 );
+			}
 		}
-	}
-	else if( ( attribute_values->flags & 0x0002 ) != 0 )
+		else if( ( attribute_values->flags & 0x0002 ) != 0 )
 	{
 		if( libfsapfs_data_stream_initialize_from_data(
 		     data_stream,
@@ -201,4 +517,3 @@ int libfsapfs_attributes_get_data_stream(
 	}
 	return( 1 );
 }
-

@@ -1143,13 +1143,16 @@ int libfsapfs_object_map_btree_get_entry_by_identifier(
 
 			return( -1 );
 		}
-		if( entry->value_data_size != 8 )
+		/* Branch-node values can contain additional data (e.g. a 32-byte hash)
+		 * after the 8-byte sub-node block number.
+		 */
+		if( entry->value_data_size < 8 )
 		{
 			libcerror_error_set(
 			 error,
 			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-			 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
-			 "%s: invalid B-tree entry - unsupported value data size.",
+			 LIBCERROR_RUNTIME_ERROR_VALUE_OUT_OF_BOUNDS,
+			 "%s: invalid B-tree entry - value data size value out of bounds.",
 			 function );
 
 			return( -1 );
@@ -1345,4 +1348,3 @@ on_error:
 	}
 	return( -1 );
 }
-

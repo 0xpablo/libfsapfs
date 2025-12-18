@@ -741,6 +741,150 @@ int libfsapfs_internal_volume_open_read(
 			goto on_error;
 		}
 	}
+	if( ( internal_volume->superblock->incompatible_features_flags & 0x0000000000000020ULL ) != 0 )
+	{
+		libfsapfs_snapshot_metadata_t *snapshot_metadata = NULL;
+		libfsapfs_volume_superblock_t *snapshot_superblock = NULL;
+		off64_t snapshot_file_offset = 0;
+		int number_of_snapshots = 0;
+
+		if( libcdata_array_get_number_of_entries(
+		     internal_volume->snapshots,
+		     &number_of_snapshots,
+		     error ) != 1 )
+		{
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+			 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+			 "%s: unable to retrieve number of snapshots.",
+			 function );
+
+			goto on_error;
+		}
+		if( number_of_snapshots > 0 )
+		{
+			if( libcdata_array_get_entry_by_index(
+			     internal_volume->snapshots,
+			     0,
+			     (intptr_t **) &snapshot_metadata,
+			     error ) != 1 )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+				 "%s: unable to retrieve snapshot metadata: 1.",
+				 function );
+
+				goto on_error;
+			}
+			if( snapshot_metadata == NULL )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_VALUE_MISSING,
+				 "%s: invalid snapshot metadata: 1.",
+				 function );
+
+				goto on_error;
+			}
+			snapshot_file_offset = (off64_t) ( snapshot_metadata->volume_superblock_block_number * internal_volume->io_handle->block_size );
+
+#if defined( HAVE_DEBUG_OUTPUT )
+			if( libcnotify_verbose != 0 )
+			{
+				libcnotify_printf(
+				 "Reading sealed volume snapshot superblock:\n" );
+			}
+#endif
+			if( libfsapfs_volume_superblock_initialize(
+			     &snapshot_superblock,
+			     error ) != 1 )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_INITIALIZE_FAILED,
+				 "%s: unable to create sealed volume snapshot superblock.",
+				 function );
+
+				if( snapshot_superblock != NULL )
+				{
+					libfsapfs_volume_superblock_free(
+					 &snapshot_superblock,
+					 NULL );
+				}
+				goto on_error;
+			}
+				/* Sealed volumes can reference a snapshot superblock (0x4000000d) or
+				 * a regular volume superblock (0x0000000d). Try both.
+				 */
+				if( libfsapfs_volume_superblock_read_file_io_handle(
+				     snapshot_superblock,
+				     file_io_handle,
+				     snapshot_file_offset,
+				     0,
+				     error ) != 1 )
+				{
+					if( snapshot_superblock != NULL )
+					{
+						libfsapfs_volume_superblock_free(
+						 &snapshot_superblock,
+						 NULL );
+					}
+					if( error != NULL )
+					{
+						libcerror_error_free(
+						 error );
+					}
+					if( libfsapfs_volume_superblock_initialize(
+					     &snapshot_superblock,
+					     error ) != 1 )
+					{
+						libcerror_error_set(
+						 error,
+						 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+						 LIBCERROR_RUNTIME_ERROR_INITIALIZE_FAILED,
+						 "%s: unable to create sealed volume snapshot superblock.",
+						 function );
+
+						goto on_error;
+					}
+					if( libfsapfs_volume_superblock_read_file_io_handle(
+					     snapshot_superblock,
+					     file_io_handle,
+					     snapshot_file_offset,
+					     1,
+					     error ) != 1 )
+					{
+						libcerror_error_set(
+						 error,
+						 LIBCERROR_ERROR_DOMAIN_IO,
+						 LIBCERROR_IO_ERROR_READ_FAILED,
+						 "%s: unable to read sealed volume snapshot superblock at offset: %" PRIi64 " (0x%08" PRIx64 ").",
+						 function,
+						 snapshot_file_offset,
+						 snapshot_file_offset );
+
+						if( snapshot_superblock != NULL )
+						{
+							libfsapfs_volume_superblock_free(
+							 &snapshot_superblock,
+							 NULL );
+						}
+						goto on_error;
+					}
+				}
+			libfsapfs_volume_superblock_free(
+			 &( internal_volume->superblock ),
+			 NULL );
+
+			internal_volume->superblock = snapshot_superblock;
+			snapshot_superblock         = NULL;
+		}
+	}
 	if( internal_volume->superblock->file_system_root_object_identifier == 0 )
 	{
 		libcerror_error_set(
@@ -2898,6 +3042,7 @@ int libfsapfs_internal_volume_get_file_system(
 	     internal_volume->encryption_context,
 	     internal_volume->file_system_data_block_vector,
 	     internal_volume->object_map_btree,
+	     internal_volume->superblock->file_system_root_object_identifier,
 	     object_map_descriptor->physical_address,
 	     use_case_folding,
 	     error ) != 1 )
@@ -2911,6 +3056,8 @@ int libfsapfs_internal_volume_get_file_system(
 
 		goto on_error;
 	}
+	file_system_btree->sealed_extent_tree_root_node_block_number = internal_volume->superblock->sealed_extent_tree_root_node_block_number;
+
 	if( libfsapfs_file_system_initialize(
 	     &( internal_volume->file_system ),
 	     internal_volume->io_handle,
@@ -3567,4 +3714,3 @@ on_error:
 #endif
 	return( -1 );
 }
-

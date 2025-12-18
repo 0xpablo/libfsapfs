@@ -83,6 +83,14 @@ struct libfsapfs_volume_superblock
 	/* The volume name
 	 */
 	uint8_t volume_name[ 256 ];
+
+	/* The sealed extent tree root node object identifier (OID)
+	 */
+	uint64_t sealed_extent_tree_root_node_object_identifier;
+
+	/* The sealed extent tree root node block number
+	 */
+	uint64_t sealed_extent_tree_root_node_block_number;
 };
 
 int libfsapfs_volume_superblock_initialize(
@@ -140,4 +148,3 @@ int libfsapfs_volume_superblock_get_utf16_volume_name(
 #endif
 
 #endif /* !defined( _LIBFSAPFS_VOLUME_SUPERBLOCK_H ) */
-

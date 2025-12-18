@@ -35,6 +35,7 @@
 #include "fsapfs_btree.h"
 #include "fsapfs_object.h"
 #include "fsapfs_object_map.h"
+#include "fsapfs_sealed_extent_tree.h"
 
 /* Creates a B-tree node
  * Make sure the value btree_node is referencing, is set to NULL
@@ -490,6 +491,11 @@ int libfsapfs_btree_node_read_data(
 					value_data_size = (uint16_t) sizeof( fsapfs_object_map_btree_value_t );
 					break;
 
+				case 0x0000001fUL:
+					key_data_size   = (uint16_t) sizeof( fsapfs_sealed_extent_btree_key_t );
+					value_data_size = (uint16_t) sizeof( fsapfs_sealed_extent_btree_value_t );
+					break;
+
 				default:
 					libcerror_error_set(
 					 error,
@@ -924,4 +930,3 @@ int libfsapfs_btree_node_get_entry_by_index(
 	}
 	return( 1 );
 }
-
