@@ -160,21 +160,50 @@ int libfsapfs_data_block_vector_initialize(
 
 			goto on_error;
 		}
-		if( ( is_sparse == 0 )
-		 || ( file_extent->physical_block_number != 0 ) )
+		/* Handle sparse gaps between extents.
+		 *
+		 * Modern APFS can represent sparse files where file extents do not form a fully
+		 * contiguous logical range. In such cases the next extent's logical offset can be
+		 * greater than the running logical offset. Represent the gap as a sparse segment
+		 * so reads return zero-filled bytes for the missing range.
+		 */
+		if( file_extent->logical_offset < logical_offset )
 		{
-			if( file_extent->logical_offset != logical_offset )
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_ARGUMENTS,
+			 LIBCERROR_ARGUMENT_ERROR_VALUE_OUT_OF_BOUNDS,
+			 "%s: invalid file extent: %d - logical offset value out of bounds.",
+			 function,
+			 extent_index );
+
+			goto on_error;
+		}
+		if( file_extent->logical_offset > logical_offset )
+		{
+			size64_t gap_size = (size64_t) ( file_extent->logical_offset - logical_offset );
+
+			segment_flags = LIBFDATA_RANGE_FLAG_IS_SPARSE;
+
+			if( libfdata_vector_append_segment(
+			     safe_vector,
+			     &segment_index,
+			     0,
+			     0,
+			     gap_size,
+			     segment_flags,
+			     error ) != 1 )
 			{
 				libcerror_error_set(
 				 error,
-				 LIBCERROR_ERROR_DOMAIN_ARGUMENTS,
-				 LIBCERROR_ARGUMENT_ERROR_VALUE_OUT_OF_BOUNDS,
-				 "%s: invalid file extent: %d - logical offset value out of bounds.",
-				 function,
-				 extent_index );
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_APPEND_FAILED,
+				 "%s: unable to append sparse gap as data block vector segment.",
+				 function );
 
 				goto on_error;
 			}
+			logical_offset += (uint64_t) gap_size;
 		}
 		segment_flags = 0;
 
@@ -217,4 +246,3 @@ on_error:
 	}
 	return( -1 );
 }
-
