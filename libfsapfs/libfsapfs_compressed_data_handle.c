@@ -81,7 +81,9 @@ int libfsapfs_compressed_data_handle_initialize(
 		return( -1 );
 	}
 	if( ( compression_method != LIBFSAPFS_COMPRESSION_METHOD_DEFLATE )
+	 && ( compression_method != LIBFSAPFS_COMPRESSION_METHOD_LZFSE )
 	 && ( compression_method != LIBFSAPFS_COMPRESSION_METHOD_LZVN )
+	 && ( compression_method != LIBFSAPFS_COMPRESSION_METHOD_ZBITMAP )
 	 && ( compression_method != LIBFSAPFS_COMPRESSION_METHOD_UNKNOWN5 ) )
 	{
 		libcerror_error_set(
@@ -459,7 +461,9 @@ int libfsapfs_compressed_data_handle_get_compressed_block_offsets(
 		compressed_descriptors_offset   += 4;
 		compressed_block_descriptor_size = 8;
 	}
-	else if( data_handle->compression_method == LIBFSAPFS_COMPRESSION_METHOD_LZVN )
+	else if( ( data_handle->compression_method == LIBFSAPFS_COMPRESSION_METHOD_LZVN )
+	      || ( data_handle->compression_method == LIBFSAPFS_COMPRESSION_METHOD_LZFSE )
+	      || ( data_handle->compression_method == LIBFSAPFS_COMPRESSION_METHOD_ZBITMAP ) )
 	{
 		segment_data_offset = 0;
 
@@ -1121,4 +1125,3 @@ off64_t libfsapfs_compressed_data_handle_seek_segment_offset(
 
 	return( segment_offset );
 }
-

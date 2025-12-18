@@ -4190,8 +4190,14 @@ int libfsapfs_internal_file_entry_get_file_extents(
      libfsapfs_internal_file_entry_t *internal_file_entry,
      libcerror_error_t **error )
 {
+	libfsapfs_file_extent_t *file_extent = NULL;
+	libfsapfs_sealed_extent_tree_t *sealed_extent_tree = NULL;
 	static char *function           = "libfsapfs_internal_file_entry_get_file_extents";
 	uint64_t file_system_identifier = 0;
+	uint64_t data_stream_size       = 0;
+	int extent_index                = 0;
+	int number_of_extents           = 0;
+	int requires_sealed_extent_tree = 0;
 	int result                      = 0;
 
 	if( internal_file_entry == NULL )
@@ -4262,6 +4268,234 @@ int libfsapfs_internal_file_entry_get_file_extents(
 		 function );
 
 		goto on_error;
+	}
+	if( libfsapfs_inode_get_data_stream_size(
+	     internal_file_entry->inode,
+	     &data_stream_size,
+	     error ) != 1 )
+	{
+		libcerror_error_set(
+		 error,
+		 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+		 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+		 "%s: unable to retrieve data stream size from inode.",
+		 function );
+
+		goto on_error;
+	}
+	if( libcdata_array_get_number_of_entries(
+	     internal_file_entry->file_extents,
+	     &number_of_extents,
+	     error ) != 1 )
+	{
+		libcerror_error_set(
+		 error,
+		 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+		 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+		 "%s: unable to retrieve number of file extents.",
+		 function );
+
+		goto on_error;
+	}
+	for( extent_index = 0;
+	     extent_index < number_of_extents;
+	     extent_index++ )
+	{
+		if( libcdata_array_get_entry_by_index(
+		     internal_file_entry->file_extents,
+		     extent_index,
+		     (intptr_t **) &file_extent,
+		     error ) != 1 )
+		{
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+			 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+			 "%s: unable to retrieve file extent: %d.",
+			 function,
+			 extent_index );
+
+			goto on_error;
+		}
+		if( file_extent == NULL )
+		{
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+			 LIBCERROR_RUNTIME_ERROR_VALUE_MISSING,
+			 "%s: missing file extent: %d.",
+			 function,
+			 extent_index );
+
+			goto on_error;
+		}
+		if( file_extent->file_system_data_type == LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT2 )
+		{
+			requires_sealed_extent_tree = 1;
+		}
+		if( extent_index < ( number_of_extents - 1 ) )
+		{
+			libfsapfs_file_extent_t *next_file_extent = NULL;
+
+			if( libcdata_array_get_entry_by_index(
+			     internal_file_entry->file_extents,
+			     extent_index + 1,
+			     (intptr_t **) &next_file_extent,
+			     error ) != 1 )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+				 "%s: unable to retrieve file extent: %d.",
+				 function,
+				 extent_index + 1 );
+
+				goto on_error;
+			}
+			if( next_file_extent == NULL )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_VALUE_MISSING,
+				 "%s: missing file extent: %d.",
+				 function,
+				 extent_index + 1 );
+
+				goto on_error;
+			}
+			if( next_file_extent->logical_offset < file_extent->logical_offset )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_VALUE_OUT_OF_BOUNDS,
+				 "%s: invalid file extents ordering: %" PRIu64 " < %" PRIu64 ".",
+				 function,
+				 next_file_extent->logical_offset,
+				 file_extent->logical_offset );
+
+				goto on_error;
+			}
+			file_extent->data_size = next_file_extent->logical_offset - file_extent->logical_offset;
+		}
+		else
+		{
+			if( file_extent->logical_offset > data_stream_size )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_VALUE_OUT_OF_BOUNDS,
+				 "%s: invalid last file extent logical offset value out of bounds.",
+				 function );
+
+				goto on_error;
+			}
+			file_extent->data_size = data_stream_size - file_extent->logical_offset;
+		}
+	}
+	if( requires_sealed_extent_tree != 0 )
+	{
+		result = libfsapfs_file_system_btree_get_sealed_extent_tree(
+		          internal_file_entry->file_system_btree,
+		          internal_file_entry->file_io_handle,
+		          &sealed_extent_tree,
+		          error );
+
+		if( result != 1 )
+		{
+			if( result == 0 )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_VALUE_MISSING,
+				 "%s: missing sealed extent tree root node block number.",
+				 function );
+			}
+			else
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+				 "%s: unable to retrieve sealed extent tree.",
+				 function );
+			}
+			goto on_error;
+		}
+
+		for( extent_index = 0;
+		     extent_index < number_of_extents;
+		     extent_index++ )
+		{
+			uint64_t physical_block_number = 0;
+			uint64_t maximum_data_size     = 0;
+
+			if( libcdata_array_get_entry_by_index(
+			     internal_file_entry->file_extents,
+			     extent_index,
+			     (intptr_t **) &file_extent,
+			     error ) != 1 )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+				 "%s: unable to retrieve file extent: %d.",
+				 function,
+				 extent_index );
+
+				goto on_error;
+			}
+			if( ( file_extent == NULL )
+			 || ( file_extent->file_system_data_type != LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT2 ) )
+			{
+				continue;
+			}
+				result = libfsapfs_sealed_extent_tree_lookup(
+				          sealed_extent_tree,
+				          file_extent->identifier,
+				          file_extent->logical_offset,
+				          &physical_block_number,
+				          &maximum_data_size,
+				          error );
+
+			if( result != 1 )
+			{
+				if( result == 0 )
+				{
+					libcerror_error_set(
+					 error,
+					 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+					 LIBCERROR_RUNTIME_ERROR_VALUE_MISSING,
+					 "%s: sealed extent mapping not found for file extent2: %d (identifier: %" PRIu64 ", logical offset: %" PRIu64 ").",
+					 function,
+					 extent_index,
+					 file_extent->identifier,
+					 file_extent->logical_offset );
+				}
+				else
+				{
+					libcerror_error_set(
+					 error,
+					 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+					 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+					 "%s: unable to look up sealed extent mapping for file extent2: %d.",
+					 function,
+					 extent_index );
+				}
+				goto on_error;
+			}
+			file_extent->physical_block_number = physical_block_number;
+
+			if( maximum_data_size < file_extent->data_size )
+			{
+				file_extent->data_size = maximum_data_size;
+			}
+		}
 	}
 	return( 1 );
 
@@ -4362,6 +4596,11 @@ int libfsapfs_internal_file_entry_get_data_stream(
 				compression_method = LIBFSAPFS_COMPRESSION_METHOD_LZFSE;
 				break;
 
+			case 13:
+			case 14:
+				compression_method = LIBFSAPFS_COMPRESSION_METHOD_ZBITMAP;
+				break;
+
 			default:
 				libcerror_error_set(
 				 error,
@@ -4374,7 +4613,9 @@ int libfsapfs_internal_file_entry_get_data_stream(
 				goto on_error;
 		}
 		if( ( internal_file_entry->compressed_data_header->compression_method == 4 )
-		 || ( internal_file_entry->compressed_data_header->compression_method == 8 ) )
+		 || ( internal_file_entry->compressed_data_header->compression_method == 8 )
+		 || ( internal_file_entry->compressed_data_header->compression_method == 12 )
+		 || ( internal_file_entry->compressed_data_header->compression_method == 14 ) )
 		{
 			if( libfsapfs_attributes_get_data_stream(
 			     internal_file_entry->resource_fork_attribute_values,
@@ -5441,4 +5682,3 @@ int libfsapfs_file_entry_get_extent_by_index(
 #endif
 	return( result );
 }
-

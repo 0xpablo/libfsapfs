@@ -38,6 +38,7 @@ libfsapfs_la_SOURCES = \
 	fsapfs_key_bag.h \
 	fsapfs_object.h \
 	fsapfs_object_map.h \
+	fsapfs_sealed_extent_tree.h \
 	fsapfs_snapshot_metadata.h \
 	fsapfs_space_manager.h \
 	fsapfs_volume_superblock.h \
@@ -57,6 +58,7 @@ libfsapfs_la_SOURCES = \
 	libfsapfs_compressed_data_handle.c libfsapfs_compressed_data_handle.h \
 	libfsapfs_compressed_data_header.c libfsapfs_compressed_data_header.h \
 	libfsapfs_compression.c libfsapfs_compression.h \
+	libfsapfs_zbitmap.c libfsapfs_zbitmap.h \
 	libfsapfs_container.c libfsapfs_container.h \
 	libfsapfs_container_data_handle.c libfsapfs_container_data_handle.h \
 	libfsapfs_container_key_bag.c libfsapfs_container_key_bag.h \
@@ -110,6 +112,7 @@ libfsapfs_la_SOURCES = \
 	libfsapfs_object_map_descriptor.c libfsapfs_object_map_descriptor.h \
 	libfsapfs_password.c libfsapfs_password.h \
 	libfsapfs_profiler.c libfsapfs_profiler.h \
+	libfsapfs_sealed_extent_tree.c libfsapfs_sealed_extent_tree.h \
 	libfsapfs_snapshot.c libfsapfs_snapshot.h \
 	libfsapfs_snapshot_metadata.c libfsapfs_snapshot_metadata.h \
 	libfsapfs_snapshot_metadata_tree.c libfsapfs_snapshot_metadata_tree.h \
@@ -162,4 +165,3 @@ sources-local: $(BUILT_SOURCES)
 splint-local:
 	@echo "Running splint on libfsapfs ..."
 	-splint -preproc -redef $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(libfsapfs_la_SOURCES)
-

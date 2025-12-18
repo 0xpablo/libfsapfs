@@ -266,13 +266,16 @@ int libfsapfs_snapshot_metadata_tree_get_sub_node_block_number_from_entry(
 
 		return( -1 );
 	}
-	if( entry->value_data_size != 8 )
+	/* Branch-node values can contain additional data (e.g. a 32-byte hash)
+	 * after the 8-byte sub-node object identifier.
+	 */
+	if( entry->value_data_size < 8 )
 	{
 		libcerror_error_set(
 		 error,
 		 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-		 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
-		 "%s: invalid B-tree entry - unsupported value data size.",
+		 LIBCERROR_RUNTIME_ERROR_VALUE_OUT_OF_BOUNDS,
+		 "%s: invalid B-tree entry - value data size value out of bounds.",
 		 function );
 
 		return( -1 );
@@ -379,14 +382,17 @@ on_error:
 int libfsapfs_snapshot_metadata_tree_get_root_node(
      libfsapfs_snapshot_metadata_tree_t *snapshot_metadata_tree,
      libbfio_handle_t *file_io_handle,
+     uint64_t transaction_identifier,
      uint64_t root_node_block_number,
      libfsapfs_btree_node_t **root_node,
      libcerror_error_t **error )
 {
+	libfsapfs_object_map_descriptor_t *object_map_descriptor = NULL;
 	libfcache_cache_value_t *cache_value = NULL;
 	libfsapfs_btree_node_t *node         = NULL;
 	libfsapfs_data_block_t *data_block   = NULL;
 	static char *function                = "libfsapfs_snapshot_metadata_tree_get_root_node";
+	uint64_t root_node_physical_block_number = 0;
 	int result                           = 0;
 
 #if defined( HAVE_PROFILER )
@@ -404,17 +410,6 @@ int libfsapfs_snapshot_metadata_tree_get_root_node(
 
 		return( -1 );
 	}
-	if( root_node_block_number > (uint64_t) INT_MAX )
-	{
-		libcerror_error_set(
-		 error,
-		 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-		 LIBCERROR_RUNTIME_ERROR_VALUE_OUT_OF_BOUNDS,
-		 "%s: invalid root node block number value out of bounds.",
-		 function );
-
-		return( -1 );
-	}
 	if( root_node == NULL )
 	{
 		libcerror_error_set(
@@ -425,6 +420,62 @@ int libfsapfs_snapshot_metadata_tree_get_root_node(
 		 function );
 
 		return( -1 );
+	}
+	/* The snapshot metadata tree root node identifier can either be a physical block number,
+	 * or an object identifier that requires translation via the object map.
+	 */
+	root_node_physical_block_number = root_node_block_number;
+
+	result = libfsapfs_object_map_btree_get_descriptor_by_object_identifier(
+	          snapshot_metadata_tree->object_map_btree,
+	          file_io_handle,
+	          root_node_block_number,
+	          transaction_identifier,
+	          &object_map_descriptor,
+	          error );
+
+	if( result == -1 )
+	{
+		libcerror_error_set(
+		 error,
+		 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+		 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+		 "%s: unable to retrieve object map descriptor for root node object identifier: %" PRIu64 " (transaction: %" PRIu64 ").",
+		 function,
+		 root_node_block_number,
+		 transaction_identifier );
+
+		goto on_error;
+	}
+	else if( result != 0 )
+	{
+		if( object_map_descriptor == NULL )
+		{
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+			 LIBCERROR_RUNTIME_ERROR_VALUE_MISSING,
+			 "%s: invalid object map descriptor.",
+			 function );
+
+			goto on_error;
+		}
+		root_node_physical_block_number = object_map_descriptor->physical_address;
+
+		libfsapfs_object_map_descriptor_free(
+		 &object_map_descriptor,
+		 NULL );
+	}
+	if( root_node_physical_block_number > (uint64_t) INT_MAX )
+	{
+		libcerror_error_set(
+		 error,
+		 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+		 LIBCERROR_RUNTIME_ERROR_VALUE_OUT_OF_BOUNDS,
+		 "%s: invalid root node block number value out of bounds.",
+		 function );
+
+		goto on_error;
 	}
 #if defined( HAVE_PROFILER )
 	if( snapshot_metadata_tree->io_handle->profiler != NULL )
@@ -449,7 +500,7 @@ int libfsapfs_snapshot_metadata_tree_get_root_node(
 	result = libfcache_cache_get_value_by_identifier(
 	          snapshot_metadata_tree->node_cache,
 	          0,
-	          (off64_t) root_node_block_number,
+	          (off64_t) root_node_physical_block_number,
 	          0,
 	          &cache_value,
 	          error );
@@ -467,22 +518,22 @@ int libfsapfs_snapshot_metadata_tree_get_root_node(
 	}
 	else if( result == 0 )
 	{
-		if( libfdata_vector_get_element_value_by_index(
-		     snapshot_metadata_tree->data_block_vector,
-		     (intptr_t *) file_io_handle,
-		     (libfdata_cache_t *) snapshot_metadata_tree->data_block_cache,
-		     (int) root_node_block_number,
-		     (intptr_t **) &data_block,
-		     0,
-		     error ) != 1 )
-		{
+			if( libfdata_vector_get_element_value_by_index(
+			     snapshot_metadata_tree->data_block_vector,
+			     (intptr_t *) file_io_handle,
+			     (libfdata_cache_t *) snapshot_metadata_tree->data_block_cache,
+			     (int) root_node_physical_block_number,
+			     (intptr_t **) &data_block,
+			     0,
+			     error ) != 1 )
+			{
 			libcerror_error_set(
 			 error,
-			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-			 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
-			 "%s: unable to retrieve data block: %" PRIu64 ".",
-			 function,
-			 root_node_block_number );
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+				 "%s: unable to retrieve data block: %" PRIu64 ".",
+				 function,
+				 root_node_physical_block_number );
 
 			goto on_error;
 		}
@@ -490,11 +541,11 @@ int libfsapfs_snapshot_metadata_tree_get_root_node(
 		{
 			libcerror_error_set(
 			 error,
-			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-			 LIBCERROR_RUNTIME_ERROR_VALUE_MISSING,
-			 "%s: invalid data block: %" PRIu64 ".",
-			 function,
-			 root_node_block_number );
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_VALUE_MISSING,
+				 "%s: invalid data block: %" PRIu64 ".",
+				 function,
+				 root_node_physical_block_number );
 
 			goto on_error;
 		}
@@ -524,32 +575,59 @@ int libfsapfs_snapshot_metadata_tree_get_root_node(
 			 "%s: unable to read B-tree node.",
 			 function );
 
-			goto on_error;
-		}
-		if( node->object_type != 0x40000002UL )
-		{
-			libcerror_error_set(
-			 error,
-			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-			 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
-			 "%s: invalid object type: 0x%08" PRIx32 ".",
-			 function,
-			 node->object_type );
+				goto on_error;
+			}
+			/* If the block is all zeros, treat it as not available. */
+			if( ( node->object_type == 0x00000000UL )
+			 && ( node->node_header != NULL )
+			 && ( node->node_header->flags == 0 ) )
+			{
+				if( libfsapfs_btree_node_free(
+				     &node,
+				     error ) != 1 )
+				{
+					libcerror_error_set(
+					 error,
+					 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+					 LIBCERROR_RUNTIME_ERROR_FINALIZE_FAILED,
+					 "%s: unable to free node.",
+					 function );
 
-			goto on_error;
-		}
-		if( node->object_subtype != 0x00000010UL )
-		{
-			libcerror_error_set(
-			 error,
-			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-			 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
-			 "%s: invalid object subtype: 0x%08" PRIx32 ".",
-			 function,
-			 node->object_subtype );
+					goto on_error;
+				}
+				return( 0 );
+			}
+			/* If BTNODE_NOHEADER is set, the object header fields are not stored
+			 * (and the values can be 0), so skip validating object type/subtype.
+			 */
+			if( ( node->node_header == NULL )
+			 || ( ( node->node_header->flags & 0x0010 ) == 0 ) )
+			{
+				if( node->object_type != 0x40000002UL )
+				{
+					libcerror_error_set(
+					 error,
+					 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+					 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
+					 "%s: invalid object type: 0x%08" PRIx32 ".",
+					 function,
+					 node->object_type );
 
-			goto on_error;
-		}
+					goto on_error;
+				}
+				if( node->object_subtype != 0x00000010UL )
+				{
+					libcerror_error_set(
+					 error,
+					 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+					 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
+					 "%s: invalid object subtype: 0x%08" PRIx32 ".",
+					 function,
+					 node->object_subtype );
+
+					goto on_error;
+				}
+			}
 		if( ( node->node_header->flags & 0x0001 ) == 0 )
 		{
 			libcerror_error_set(
@@ -595,14 +673,14 @@ int libfsapfs_snapshot_metadata_tree_get_root_node(
 
 			goto on_error;
 		}
-		if( libfcache_cache_set_value_by_identifier(
-		     snapshot_metadata_tree->node_cache,
-		     0,
-		     (off64_t) root_node_block_number,
-		     0,
-		     (intptr_t *) node,
-		     (int (*)(intptr_t **, libcerror_error_t **)) &libfsapfs_btree_node_free,
-		     LIBFCACHE_CACHE_VALUE_FLAG_MANAGED,
+			if( libfcache_cache_set_value_by_identifier(
+			     snapshot_metadata_tree->node_cache,
+			     0,
+			     (off64_t) root_node_physical_block_number,
+			     0,
+			     (intptr_t *) node,
+			     (int (*)(intptr_t **, libcerror_error_t **)) &libfsapfs_btree_node_free,
+			     LIBFCACHE_CACHE_VALUE_FLAG_MANAGED,
 		     error ) != 1 )
 		{
 			libcerror_error_set(
@@ -674,6 +752,12 @@ int libfsapfs_snapshot_metadata_tree_get_root_node(
 	return( 1 );
 
 on_error:
+	if( object_map_descriptor != NULL )
+	{
+		libfsapfs_object_map_descriptor_free(
+		 &object_map_descriptor,
+		 NULL );
+	}
 	if( node != NULL )
 	{
 		libfsapfs_btree_node_free(
@@ -836,29 +920,36 @@ int libfsapfs_snapshot_metadata_tree_get_sub_node(
 
 			goto on_error;
 		}
-		if( node->object_type != 0x40000003UL )
+		/* If BTNODE_NOHEADER is set, the object header fields are not stored
+		 * (and the values can be 0), so skip validating object type/subtype.
+		 */
+		if( ( node->node_header == NULL )
+		 || ( ( node->node_header->flags & 0x0010 ) == 0 ) )
 		{
-			libcerror_error_set(
-			 error,
-			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-			 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
-			 "%s: invalid object type: 0x%08" PRIx32 ".",
-			 function,
-			 node->object_type );
+			if( node->object_type != 0x40000003UL )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
+				 "%s: invalid object type: 0x%08" PRIx32 ".",
+				 function,
+				 node->object_type );
 
-			goto on_error;
-		}
-		if( node->object_subtype != 0x00000010UL )
-		{
-			libcerror_error_set(
-			 error,
-			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-			 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
-			 "%s: invalid object subtype: 0x%08" PRIx32 ".",
-			 function,
-			 node->object_subtype );
+				goto on_error;
+			}
+			if( node->object_subtype != 0x00000010UL )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
+				 "%s: invalid object subtype: 0x%08" PRIx32 ".",
+				 function,
+				 node->object_subtype );
 
-			goto on_error;
+				goto on_error;
+			}
 		}
 		if( ( node->node_header->flags & 0x0001 ) != 0 )
 		{
@@ -1158,6 +1249,7 @@ int libfsapfs_snapshot_metadata_tree_get_entry_from_node_by_identifier(
 int libfsapfs_snapshot_metadata_tree_get_entry_by_identifier(
      libfsapfs_snapshot_metadata_tree_t *snapshot_metadata_tree,
      libbfio_handle_t *file_io_handle,
+     uint64_t transaction_identifier,
      uint64_t object_identifier,
      libfsapfs_btree_node_t **btree_node,
      libfsapfs_btree_entry_t **btree_entry,
@@ -1207,6 +1299,7 @@ int libfsapfs_snapshot_metadata_tree_get_entry_by_identifier(
 	if( libfsapfs_snapshot_metadata_tree_get_root_node(
 	     snapshot_metadata_tree,
 	     file_io_handle,
+	     transaction_identifier,
 	     snapshot_metadata_tree->root_node_block_number,
 	     &node,
 	     error ) != 1 )
@@ -1300,13 +1393,16 @@ int libfsapfs_snapshot_metadata_tree_get_entry_by_identifier(
 
 			return( -1 );
 		}
-		if( entry->value_data_size != 8 )
+		/* Branch-node values can contain additional data (e.g. a 32-byte hash)
+		 * after the 8-byte sub-node block number.
+		 */
+		if( entry->value_data_size < 8 )
 		{
 			libcerror_error_set(
 			 error,
 			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-			 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
-			 "%s: invalid B-tree entry - unsupported value data size.",
+			 LIBCERROR_RUNTIME_ERROR_VALUE_OUT_OF_BOUNDS,
+			 "%s: invalid B-tree entry - value data size value out of bounds.",
 			 function );
 
 			return( -1 );
@@ -1356,6 +1452,7 @@ int libfsapfs_snapshot_metadata_tree_get_entry_by_identifier(
 int libfsapfs_snapshot_metadata_tree_get_metadata_by_object_identifier(
      libfsapfs_snapshot_metadata_tree_t *snapshot_metadata_tree,
      libbfio_handle_t *file_io_handle,
+     uint64_t transaction_identifier,
      uint64_t object_identifier,
      libfsapfs_snapshot_metadata_t **metadata,
      libcerror_error_t **error )
@@ -1401,6 +1498,7 @@ int libfsapfs_snapshot_metadata_tree_get_metadata_by_object_identifier(
 	result = libfsapfs_snapshot_metadata_tree_get_entry_by_identifier(
 	          snapshot_metadata_tree,
 	          file_io_handle,
+	          transaction_identifier,
 	          object_identifier,
 	          &node,
 	          &entry,
@@ -1654,9 +1752,9 @@ int libfsapfs_snapshot_metadata_tree_get_snapshots_from_leaf_node(
 			  snapshot_metadata_data_type ) );
 		}
 #endif
-		if( snapshot_metadata_data_type > LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_SNAPSHOT_METADATA )
+		if( snapshot_metadata_data_type != LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_SNAPSHOT_METADATA )
 		{
-			break;
+			continue;
 		}
 		if( libfsapfs_snapshot_metadata_initialize(
 		     &snapshot_metadata,
@@ -1909,10 +2007,10 @@ int libfsapfs_snapshot_metadata_tree_get_snapshots_from_branch_node(
 			  snapshot_metadata_data_type ) );
 		}
 #endif
-		if( snapshot_metadata_data_type > LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_SNAPSHOT_METADATA )
-		{
-			break;
-		}
+		/* The snapshot metadata tree can contain additional record types and the
+		 * ordering is not guaranteed to place snapshot metadata (type 1) first.
+		 * Traverse all sub-nodes and filter snapshot metadata at the leaf level.
+		 */
 		if( libfsapfs_snapshot_metadata_tree_get_sub_node_block_number_from_entry(
 		     snapshot_metadata_tree,
 		     file_io_handle,
@@ -2062,6 +2160,7 @@ int libfsapfs_snapshot_metadata_tree_get_snapshots(
 	if( libfsapfs_snapshot_metadata_tree_get_root_node(
 	     snapshot_metadata_tree,
 	     file_io_handle,
+	     transaction_identifier,
 	     snapshot_metadata_tree->root_node_block_number,
 	     &root_node,
 	     error ) != 1 )
@@ -2164,4 +2263,3 @@ on_error:
 
 	return( -1 );
 }
-

@@ -46,9 +46,14 @@
 #include "libfsapfs_name_hash.h"
 #include "libfsapfs_object_map_btree.h"
 #include "libfsapfs_object_map_descriptor.h"
+#include "libfsapfs_sealed_extent_tree.h"
 
 #include "fsapfs_file_system.h"
 #include "fsapfs_object.h"
+
+#define LIBFSAPFS_FILE_SYSTEM_BTREE_BRANCH_CHILD_OID_ENCODING_UNKNOWN					0
+#define LIBFSAPFS_FILE_SYSTEM_BTREE_BRANCH_CHILD_OID_ENCODING_ABSOLUTE_OID				1
+#define LIBFSAPFS_FILE_SYSTEM_BTREE_BRANCH_CHILD_OID_ENCODING_RELATIVE_TO_ROOT_OID		2
 
 /* Creates a file system B-tree
  * Make sure the value file_system_btree is referencing, is set to NULL
@@ -60,6 +65,7 @@ int libfsapfs_file_system_btree_initialize(
      libfsapfs_encryption_context_t *encryption_context,
      libfdata_vector_t *data_block_vector,
      libfsapfs_object_map_btree_t *object_map_btree,
+     uint64_t root_node_object_identifier,
      uint64_t root_node_block_number,
      uint8_t use_case_folding,
      libcerror_error_t **error )
@@ -153,7 +159,9 @@ int libfsapfs_file_system_btree_initialize(
 	( *file_system_btree )->encryption_context     = encryption_context;
 	( *file_system_btree )->data_block_vector      = data_block_vector;
 	( *file_system_btree )->object_map_btree       = object_map_btree;
+	( *file_system_btree )->root_node_object_identifier = root_node_object_identifier;
 	( *file_system_btree )->root_node_block_number = root_node_block_number;
+	( *file_system_btree )->branch_child_oid_encoding = LIBFSAPFS_FILE_SYSTEM_BTREE_BRANCH_CHILD_OID_ENCODING_UNKNOWN;
 	( *file_system_btree )->use_case_folding       = use_case_folding;
 
 	return( 1 );
@@ -194,6 +202,22 @@ int libfsapfs_file_system_btree_free(
 	{
 		/* The io_handle, data_block_vector and object_map_btree are referenced and freed elsewhere
 		 */
+		if( ( *file_system_btree )->sealed_extent_tree != NULL )
+		{
+			if( libfsapfs_sealed_extent_tree_free(
+			     &( ( *file_system_btree )->sealed_extent_tree ),
+			     error ) != 1 )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_FINALIZE_FAILED,
+				 "%s: unable to free sealed extent tree.",
+				 function );
+
+				result = -1;
+			}
+		}
 		if( libfcache_cache_free(
 		     &( ( *file_system_btree )->node_cache ),
 		     error ) != 1 )
@@ -228,20 +252,116 @@ int libfsapfs_file_system_btree_free(
 	return( result );
 }
 
+/* Retrieves the sealed extent tree (used to resolve FILE_EXTENT2 mappings)
+ * Returns 1 if available, 0 if not present or -1 on error
+ */
+int libfsapfs_file_system_btree_get_sealed_extent_tree(
+     libfsapfs_file_system_btree_t *file_system_btree,
+     libbfio_handle_t *file_io_handle,
+     libfsapfs_sealed_extent_tree_t **sealed_extent_tree,
+     libcerror_error_t **error )
+{
+	static char *function = "libfsapfs_file_system_btree_get_sealed_extent_tree";
+
+	if( sealed_extent_tree == NULL )
+	{
+		libcerror_error_set(
+		 error,
+		 LIBCERROR_ERROR_DOMAIN_ARGUMENTS,
+		 LIBCERROR_ARGUMENT_ERROR_INVALID_VALUE,
+		 "%s: invalid sealed extent tree.",
+		 function );
+
+		return( -1 );
+	}
+	*sealed_extent_tree = NULL;
+
+	if( file_system_btree == NULL )
+	{
+		libcerror_error_set(
+		 error,
+		 LIBCERROR_ERROR_DOMAIN_ARGUMENTS,
+		 LIBCERROR_ARGUMENT_ERROR_INVALID_VALUE,
+		 "%s: invalid file system B-tree.",
+		 function );
+
+		return( -1 );
+	}
+	if( file_io_handle == NULL )
+	{
+		libcerror_error_set(
+		 error,
+		 LIBCERROR_ERROR_DOMAIN_ARGUMENTS,
+		 LIBCERROR_ARGUMENT_ERROR_INVALID_VALUE,
+		 "%s: invalid file IO handle.",
+		 function );
+
+		return( -1 );
+	}
+	if( file_system_btree->sealed_extent_tree_root_node_block_number == 0 )
+	{
+		return( 0 );
+	}
+	if( file_system_btree->sealed_extent_tree == NULL )
+	{
+		if( libfsapfs_sealed_extent_tree_initialize(
+		     &( file_system_btree->sealed_extent_tree ),
+		     file_system_btree->io_handle,
+		     file_system_btree->sealed_extent_tree_root_node_block_number,
+		     error ) != 1 )
+		{
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+			 LIBCERROR_RUNTIME_ERROR_INITIALIZE_FAILED,
+			 "%s: unable to create sealed extent tree.",
+			 function );
+
+			return( -1 );
+		}
+	}
+	if( libfsapfs_sealed_extent_tree_build(
+	     file_system_btree->sealed_extent_tree,
+	     file_io_handle,
+	     error ) != 1 )
+	{
+		libcerror_error_set(
+		 error,
+		 LIBCERROR_ERROR_DOMAIN_IO,
+		 LIBCERROR_IO_ERROR_READ_FAILED,
+		 "%s: unable to build sealed extent tree.",
+		 function );
+
+		return( -1 );
+	}
+	*sealed_extent_tree = file_system_btree->sealed_extent_tree;
+
+	return( 1 );
+}
+
 /* Retrieves the sub node block number from a B-tree entry
  * Returns 1 if successful, 0 if not found or -1 on error
  */
 int libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
      libfsapfs_file_system_btree_t *file_system_btree,
      libbfio_handle_t *file_io_handle,
+     libfsapfs_btree_node_t *node,
      libfsapfs_btree_entry_t *entry,
      uint64_t transaction_identifier,
      uint64_t *sub_node_block_number,
      libcerror_error_t **error )
 {
 	libfsapfs_object_map_descriptor_t *object_map_descriptor = NULL;
+	libfsapfs_btree_node_t *sub_node                          = NULL;
+	libcerror_error_t *sub_error                              = NULL;
 	static char *function                                    = "libfsapfs_file_system_btree_get_sub_node_block_number_from_entry";
-	uint64_t sub_node_object_identifier                      = 0;
+	uint64_t raw_sub_node_object_identifier                  = 0;
+	uint64_t relative_sub_node_object_identifier             = 0;
+	uint64_t candidate_object_identifiers[ 2 ]               = { 0, 0 };
+	uint8_t candidate_encodings[ 2 ]                         = { 0, 0 };
+	uint16_t expected_level                                  = 0;
+	int number_of_candidates                                 = 0;
+	int candidate_index                                      = 0;
 	int result                                               = 0;
 
 	if( file_system_btree == NULL )
@@ -251,6 +371,39 @@ int libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
 		 LIBCERROR_ERROR_DOMAIN_ARGUMENTS,
 		 LIBCERROR_ARGUMENT_ERROR_INVALID_VALUE,
 		 "%s: invalid file system B-tree.",
+		 function );
+
+		return( -1 );
+	}
+	if( node == NULL )
+	{
+		libcerror_error_set(
+		 error,
+		 LIBCERROR_ERROR_DOMAIN_ARGUMENTS,
+		 LIBCERROR_ARGUMENT_ERROR_INVALID_VALUE,
+		 "%s: invalid B-tree node.",
+		 function );
+
+		return( -1 );
+	}
+	if( node->node_header == NULL )
+	{
+		libcerror_error_set(
+		 error,
+		 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+		 LIBCERROR_RUNTIME_ERROR_VALUE_MISSING,
+		 "%s: invalid B-tree node - missing node header.",
+		 function );
+
+		return( -1 );
+	}
+	if( node->node_header->level == 0 )
+	{
+		libcerror_error_set(
+		 error,
+		 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+		 LIBCERROR_RUNTIME_ERROR_VALUE_OUT_OF_BOUNDS,
+		 "%s: invalid B-tree node - level value out of bounds.",
 		 function );
 
 		return( -1 );
@@ -277,13 +430,16 @@ int libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
 
 		return( -1 );
 	}
-	if( entry->value_data_size != 8 )
+	/* Branch-node values can contain additional data (e.g. a 32-byte hash)
+	 * after the 8-byte sub-node object identifier.
+	 */
+	if( entry->value_data_size < 8 )
 	{
 		libcerror_error_set(
 		 error,
 		 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-		 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
-		 "%s: invalid B-tree entry - unsupported value data size.",
+		 LIBCERROR_RUNTIME_ERROR_VALUE_OUT_OF_BOUNDS,
+		 "%s: invalid B-tree entry - value data size value out of bounds.",
 		 function );
 
 		return( -1 );
@@ -301,41 +457,91 @@ int libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
 	}
 	byte_stream_copy_to_uint64_little_endian(
 	 entry->value_data,
-	 sub_node_object_identifier );
+	 raw_sub_node_object_identifier );
+
+	expected_level = node->node_header->level - 1;
 
 #if defined( HAVE_DEBUG_OUTPUT )
 	if( libcnotify_verbose != 0 )
 	{
 		libcnotify_printf(
-		 "%s: sub node object identifier: %" PRIu64 " (transaction: %" PRIu64 ")\n",
+		 "%s: raw sub node object identifier: %" PRIu64 " (transaction: %" PRIu64 ")\n",
 		 function,
-		 sub_node_object_identifier,
+		 raw_sub_node_object_identifier,
 		 transaction_identifier );
 	}
 #endif
-	result = libfsapfs_object_map_btree_get_descriptor_by_object_identifier(
-	          file_system_btree->object_map_btree,
-	          file_io_handle,
-	          sub_node_object_identifier,
-	          transaction_identifier,
-	          &object_map_descriptor,
-	          error );
-
-	if( result == -1 )
+	/* In newer "sealed" volumes the branch-node value can be a delta relative
+	 * to the file system root node object identifier (OID), instead of an
+	 * absolute child OID.
+	 */
+	if( file_system_btree->root_node_object_identifier != 0 )
 	{
-		libcerror_error_set(
-		 error,
-		 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-		 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
-		 "%s: unable to retrieve object map descriptor for sub node object identifier: %" PRIu64 " (transaction: %" PRIu64 ").",
-		 function,
-		 sub_node_object_identifier,
-		 transaction_identifier );
+		if( raw_sub_node_object_identifier > (uint64_t) UINT64_MAX - file_system_btree->root_node_object_identifier )
+		{
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+			 LIBCERROR_RUNTIME_ERROR_VALUE_OUT_OF_BOUNDS,
+			 "%s: invalid B-tree entry - sub node object identifier value out of bounds.",
+			 function );
 
-		goto on_error;
+			return( -1 );
+		}
+		relative_sub_node_object_identifier = file_system_btree->root_node_object_identifier + raw_sub_node_object_identifier;
 	}
-	else if( result != 0 )
+	/* Candidate ordering is based on the last successful decode. */
+	if( ( file_system_btree->branch_child_oid_encoding == LIBFSAPFS_FILE_SYSTEM_BTREE_BRANCH_CHILD_OID_ENCODING_RELATIVE_TO_ROOT_OID )
+	 && ( relative_sub_node_object_identifier != 0 )
+	 && ( relative_sub_node_object_identifier != raw_sub_node_object_identifier ) )
 	{
+		candidate_object_identifiers[ number_of_candidates ] = relative_sub_node_object_identifier;
+		candidate_encodings[ number_of_candidates++ ]        = LIBFSAPFS_FILE_SYSTEM_BTREE_BRANCH_CHILD_OID_ENCODING_RELATIVE_TO_ROOT_OID;
+	}
+	candidate_object_identifiers[ number_of_candidates ] = raw_sub_node_object_identifier;
+	candidate_encodings[ number_of_candidates++ ]        = LIBFSAPFS_FILE_SYSTEM_BTREE_BRANCH_CHILD_OID_ENCODING_ABSOLUTE_OID;
+
+	if( ( file_system_btree->branch_child_oid_encoding != LIBFSAPFS_FILE_SYSTEM_BTREE_BRANCH_CHILD_OID_ENCODING_RELATIVE_TO_ROOT_OID )
+	 && ( relative_sub_node_object_identifier != 0 )
+	 && ( relative_sub_node_object_identifier != raw_sub_node_object_identifier ) )
+	{
+		candidate_object_identifiers[ number_of_candidates ] = relative_sub_node_object_identifier;
+		candidate_encodings[ number_of_candidates++ ]        = LIBFSAPFS_FILE_SYSTEM_BTREE_BRANCH_CHILD_OID_ENCODING_RELATIVE_TO_ROOT_OID;
+	}
+	for( candidate_index = 0;
+	     candidate_index < number_of_candidates;
+	     candidate_index++ )
+	{
+		result = libfsapfs_object_map_btree_get_descriptor_by_object_identifier(
+		          file_system_btree->object_map_btree,
+		          file_io_handle,
+		          candidate_object_identifiers[ candidate_index ],
+		          transaction_identifier,
+		          &object_map_descriptor,
+		          &sub_error );
+
+		if( result == -1 )
+		{
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+			 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
+			 "%s: unable to retrieve object map descriptor for object identifier: %" PRIu64 " (transaction: %" PRIu64 ").",
+			 function,
+			 candidate_object_identifiers[ candidate_index ],
+			 transaction_identifier );
+
+			goto on_error;
+		}
+		else if( result == 0 )
+		{
+			if( sub_error != NULL )
+			{
+				libcerror_error_free(
+				 &sub_error );
+			}
+			continue;
+		}
 		if( object_map_descriptor == NULL )
 		{
 			libcerror_error_set(
@@ -351,8 +557,9 @@ int libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
 		if( libcnotify_verbose != 0 )
 		{
 			libcnotify_printf(
-			 "%s: sub node block number: %" PRIu64 "\n",
+			 "%s: candidate object identifier: %" PRIu64 " -> block: %" PRIu64 "\n",
 			 function,
+			 candidate_object_identifiers[ candidate_index ],
 			 object_map_descriptor->physical_address );
 		}
 #endif
@@ -371,8 +578,40 @@ int libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
 
 			goto on_error;
 		}
+		/* Validate the resulting child node level (child level = parent level - 1). */
+		result = libfsapfs_file_system_btree_get_sub_node(
+		          file_system_btree,
+		          file_io_handle,
+		          *sub_node_block_number,
+		          &sub_node,
+		          &sub_error );
+
+		if( result == 1 )
+		{
+			if( ( sub_node != NULL )
+			 && ( sub_node->node_header != NULL )
+			 && ( sub_node->node_header->level == expected_level ) )
+			{
+				if( file_system_btree->branch_child_oid_encoding == LIBFSAPFS_FILE_SYSTEM_BTREE_BRANCH_CHILD_OID_ENCODING_UNKNOWN )
+				{
+					file_system_btree->branch_child_oid_encoding = candidate_encodings[ candidate_index ];
+				}
+				if( sub_error != NULL )
+				{
+					libcerror_error_free(
+					 &sub_error );
+				}
+				return( 1 );
+			}
+		}
+		/* Not a match; clear error and try next. */
+		if( sub_error != NULL )
+		{
+			libcerror_error_free(
+			 &sub_error );
+		}
 	}
-	return( result );
+	return( 0 );
 
 on_error:
 	if( object_map_descriptor != NULL )
@@ -380,6 +619,11 @@ on_error:
 		libfsapfs_object_map_descriptor_free(
 		 &object_map_descriptor,
 		 NULL );
+	}
+	if( sub_error != NULL )
+	{
+		libcerror_error_free(
+		 &sub_error );
 	}
 	return( -1 );
 }
@@ -548,7 +792,10 @@ int libfsapfs_file_system_btree_get_root_node(
 
 			goto on_error;
 		}
-		if( node->object_type == 0x00000000UL )
+		/* If the block is all zeros, treat it as not available. */
+		if( ( node->object_type == 0x00000000UL )
+		 && ( node->node_header != NULL )
+		 && ( node->node_header->flags == 0 ) )
 		{
 			if( libfsapfs_btree_node_free(
 			     &node,
@@ -565,30 +812,37 @@ int libfsapfs_file_system_btree_get_root_node(
 			}
 			return( 0 );
 		}
-		if( ( node->object_type != 0x00000002UL )
-		 && ( node->object_type != 0x10000002UL ) )
+		/* If BTNODE_NOHEADER is set, the object header fields are not stored
+		 * (and the values can be 0), so skip validating object type/subtype.
+		 */
+		if( ( node->node_header == NULL )
+		 || ( ( node->node_header->flags & 0x0010 ) == 0 ) )
 		{
-			libcerror_error_set(
-			 error,
-			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-			 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
-			 "%s: invalid object type: 0x%08" PRIx32 ".",
-			 function,
-			 node->object_type );
+			if( ( node->object_type != 0x00000002UL )
+			 && ( node->object_type != 0x10000002UL ) )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
+				 "%s: invalid object type: 0x%08" PRIx32 ".",
+				 function,
+				 node->object_type );
 
-			goto on_error;
-		}
-		if( node->object_subtype != 0x0000000eUL )
-		{
-			libcerror_error_set(
-			 error,
-			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-			 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
-			 "%s: invalid object subtype: 0x%08" PRIx32 ".",
-			 function,
-			 node->object_subtype );
+				goto on_error;
+			}
+			if( node->object_subtype != 0x0000000eUL )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
+				 "%s: invalid object subtype: 0x%08" PRIx32 ".",
+				 function,
+				 node->object_subtype );
 
-			goto on_error;
+				goto on_error;
+			}
 		}
 		if( ( ( node->node_header->flags & 0x0001 ) == 0 )
 		 || ( ( node->node_header->flags & 0x0004 ) != 0 ) )
@@ -888,30 +1142,37 @@ int libfsapfs_file_system_btree_get_sub_node(
 
 			goto on_error;
 		}
-		if( ( node->object_type != 0x00000003UL )
-		 && ( node->object_type != 0x10000003UL ) )
+		/* If BTNODE_NOHEADER is set, the object header fields are not stored
+		 * (and the values can be 0), so skip validating object type/subtype.
+		 */
+		if( ( node->node_header == NULL )
+		 || ( ( node->node_header->flags & 0x0010 ) == 0 ) )
 		{
-			libcerror_error_set(
-			 error,
-			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-			 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
-			 "%s: invalid object type: 0x%08" PRIx32 ".",
-			 function,
-			 node->object_type );
+			if( ( node->object_type != 0x00000003UL )
+			 && ( node->object_type != 0x10000003UL ) )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
+				 "%s: invalid object type: 0x%08" PRIx32 ".",
+				 function,
+				 node->object_type );
 
-			goto on_error;
-		}
-		if( node->object_subtype != 0x0000000eUL )
-		{
-			libcerror_error_set(
-			 error,
-			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-			 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
-			 "%s: invalid object subtype: 0x%08" PRIx32 ".",
-			 function,
-			 node->object_subtype );
+				goto on_error;
+			}
+			if( node->object_subtype != 0x0000000eUL )
+			{
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
+				 "%s: invalid object subtype: 0x%08" PRIx32 ".",
+				 function,
+				 node->object_subtype );
 
-			goto on_error;
+				goto on_error;
+			}
 		}
 		if( ( ( node->node_header->flags & 0x0001 ) != 0 )
 		 || ( ( node->node_header->flags & 0x0004 ) != 0 ) )
@@ -1360,6 +1621,7 @@ int libfsapfs_file_system_btree_get_entry_by_identifier(
 		if( libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
 		     file_system_btree,
 		     file_io_handle,
+		     node,
 		     entry,
 		     transaction_identifier,
 		     &sub_node_block_number,
@@ -1953,6 +2215,7 @@ int libfsapfs_file_system_btree_get_directory_record_from_branch_node_by_utf8_na
 	if( libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
 	     file_system_btree,
 	     file_io_handle,
+	     node,
 	     previous_entry,
 	     transaction_identifier,
 	     &sub_node_block_number,
@@ -2610,6 +2873,7 @@ int libfsapfs_file_system_btree_get_directory_record_from_branch_node_by_utf16_n
 	if( libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
 	     file_system_btree,
 	     file_io_handle,
+	     node,
 	     previous_entry,
 	     transaction_identifier,
 	     &sub_node_block_number,
@@ -3172,6 +3436,7 @@ int libfsapfs_file_system_btree_get_directory_entries_from_branch_node(
 			if( libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
 			     file_system_btree,
 			     file_io_handle,
+			     node,
 			     previous_entry,
 			     transaction_identifier,
 			     &sub_node_block_number,
@@ -3262,6 +3527,7 @@ int libfsapfs_file_system_btree_get_directory_entries_from_branch_node(
 	if( libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
 	     file_system_btree,
 	     file_io_handle,
+	     node,
 	     previous_entry,
 	     transaction_identifier,
 	     &sub_node_block_number,
@@ -3990,6 +4256,7 @@ int libfsapfs_file_system_btree_get_attributes_from_branch_node(
 			if( libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
 			     file_system_btree,
 			     file_io_handle,
+			     node,
 			     previous_entry,
 			     transaction_identifier,
 			     &sub_node_block_number,
@@ -4080,6 +4347,7 @@ int libfsapfs_file_system_btree_get_attributes_from_branch_node(
 	if( libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
 	     file_system_btree,
 	     file_io_handle,
+	     node,
 	     previous_entry,
 	     transaction_identifier,
 	     &sub_node_block_number,
@@ -4365,15 +4633,13 @@ int libfsapfs_file_system_btree_get_file_extents_from_leaf_node(
 	static char *function                = "libfsapfs_file_system_btree_get_file_extents_from_leaf_node";
 	uint64_t file_system_identifier      = 0;
 	uint64_t lookup_identifier           = 0;
+	uint64_t lookup_identifier2          = 0;
 	int btree_entry_index                = 0;
 	int entry_index                      = 0;
 	int found_file_extent                = 0;
 	int is_leaf_node                     = 0;
 	int number_of_entries                = 0;
-
-#if defined( HAVE_DEBUG_OUTPUT )
 	uint8_t file_system_data_type        = 0;
-#endif
 
 	if( file_system_btree == NULL )
 	{
@@ -4436,6 +4702,7 @@ int libfsapfs_file_system_btree_get_file_extents_from_leaf_node(
 		goto on_error;
 	}
 	lookup_identifier = ( (uint64_t) LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT << 60 ) | identifier;
+	lookup_identifier2 = ( (uint64_t) LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT2 << 60 ) | identifier;
 
 	for( btree_entry_index = 0;
 	     btree_entry_index < number_of_entries;
@@ -4496,11 +4763,11 @@ int libfsapfs_file_system_btree_get_file_extents_from_leaf_node(
 		 ( (fsapfs_file_system_btree_key_common_t *) btree_entry->key_data )->file_system_identifier,
 		 file_system_identifier );
 
+		file_system_data_type = (uint8_t) ( file_system_identifier >> 60 );
+
 #if defined( HAVE_DEBUG_OUTPUT )
 		if( libcnotify_verbose != 0 )
 		{
-			file_system_data_type = (uint8_t) ( file_system_identifier >> 60 );
-
 			libcnotify_printf(
 			 "%s: B-tree entry: %d, identifier: %" PRIu64 ", data type: 0x%" PRIx8 " %s\n",
 			 function,
@@ -4515,7 +4782,8 @@ int libfsapfs_file_system_btree_get_file_extents_from_leaf_node(
 		{
 			break;
 		}
-		if( file_system_identifier != lookup_identifier )
+		if( ( file_system_identifier != lookup_identifier )
+		 && ( file_system_identifier != lookup_identifier2 ) )
 		{
 			continue;
 		}
@@ -4534,6 +4802,7 @@ int libfsapfs_file_system_btree_get_file_extents_from_leaf_node(
 		}
 		if( libfsapfs_file_extent_read_key_data(
 		     file_extent,
+		     file_system_data_type,
 		     btree_entry->key_data,
 		     (size_t) btree_entry->key_data_size,
 		     error ) != 1 )
@@ -4549,6 +4818,7 @@ int libfsapfs_file_system_btree_get_file_extents_from_leaf_node(
 		}
 		if( libfsapfs_file_extent_read_value_data(
 		     file_extent,
+		     file_system_data_type,
 		     btree_entry->value_data,
 		     (size_t) btree_entry->value_data_size,
 		     error ) != 1 )
@@ -4787,12 +5057,13 @@ int libfsapfs_file_system_btree_get_file_extents_from_branch_node(
 
 		if( ( file_system_identifier > identifier )
 		 || ( ( file_system_identifier == identifier )
-		  &&  ( file_system_data_type > LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT ) ) )
+		  &&  ( file_system_data_type > LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT2 ) ) )
 		{
 			break;
 		}
 		if( ( file_system_identifier == identifier )
-		 && ( file_system_data_type == LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT ) )
+		 && ( ( file_system_data_type == LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT )
+		  ||  ( file_system_data_type == LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT2 ) ) )
 		{
 			if( entry->key_data_size < sizeof( fsapfs_file_system_btree_key_file_extent_t ) )
 			{
@@ -4815,13 +5086,15 @@ int libfsapfs_file_system_btree_get_file_extents_from_branch_node(
 			file_extent_logical_address = 0;
 		}
 		if( ( file_system_identifier == identifier )
-		 && ( file_system_data_type == LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT )
+		 && ( ( file_system_data_type == LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT )
+		  ||  ( file_system_data_type == LIBFSAPFS_FILE_SYSTEM_DATA_TYPE_FILE_EXTENT2 ) )
 		 && ( file_extent_logical_address > 0 )
 		 && ( previous_entry != NULL ) )
 		{
 			if( libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
 			     file_system_btree,
 			     file_io_handle,
+			     node,
 			     previous_entry,
 			     transaction_identifier,
 			     &sub_node_block_number,
@@ -4914,6 +5187,7 @@ int libfsapfs_file_system_btree_get_file_extents_from_branch_node(
 	if( libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
 	     file_system_btree,
 	     file_io_handle,
+	     node,
 	     previous_entry,
 	     transaction_identifier,
 	     &sub_node_block_number,
@@ -6770,4 +7044,3 @@ on_error:
 	}
 	return( -1 );
 }
-

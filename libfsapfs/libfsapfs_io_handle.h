@@ -79,4 +79,3 @@ int libfsapfs_io_handle_clear(
 #endif
 
 #endif /* !defined( _LIBFSAPFS_IO_HANDLE_H ) */
-

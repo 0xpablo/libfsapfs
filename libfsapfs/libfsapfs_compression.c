@@ -37,6 +37,7 @@
 #include "libfsapfs_libcerror.h"
 #include "libfsapfs_libcnotify.h"
 #include "libfsapfs_libfmos.h"
+#include "libfsapfs_zbitmap.h"
 
 /* Decompresses data using the compression method
  * Returns 1 on success, 0 on failure or -1 on error
@@ -274,8 +275,6 @@ int libfsapfs_decompress_data(
 #endif /* ( defined( HAVE_ZLIB ) && defined( HAVE_ZLIB_UNCOMPRESS ) ) || defined( ZLIB_DLL ) */
 		}
 	}
-#ifdef TODO
-/* TODO need sample data */
 	else if( compression_method == LIBFSAPFS_COMPRESSION_METHOD_LZFSE )
 	{
 		result = libfmos_lzfse_decompress(
@@ -297,7 +296,6 @@ int libfsapfs_decompress_data(
 			return( -1 );
 		}
 	}
-#endif /* TODO */
 	else if( compression_method == LIBFSAPFS_COMPRESSION_METHOD_LZVN )
 	{
 		if( ( compressed_data_size >= 1 )
@@ -376,6 +374,27 @@ int libfsapfs_decompress_data(
 			}
 		}
 	}
+	else if( compression_method == LIBFSAPFS_COMPRESSION_METHOD_ZBITMAP )
+	{
+		result = libfsapfs_zbitmap_decompress(
+		          compressed_data,
+		          compressed_data_size,
+		          uncompressed_data,
+		          uncompressed_data_size,
+		          error );
+
+		if( result != 1 )
+		{
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_ENCRYPTION,
+			 LIBCERROR_ENCRYPTION_ERROR_GENERIC,
+			 "%s: unable to decompress ZBITMAP compressed data.",
+			 function );
+
+			return( -1 );
+		}
+	}
 	else
 	{
 		libcerror_error_set(
@@ -389,4 +408,3 @@ int libfsapfs_decompress_data(
 	}
 	return( result );
 }
-

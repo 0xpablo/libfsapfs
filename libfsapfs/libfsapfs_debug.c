@@ -570,6 +570,9 @@ const char *libfsapfs_debug_print_file_system_data_type(
 		case 9:
 			return( "(APFS_TYPE_DIR_REC)" );
 
+		case 13:
+			return( "(APFS_TYPE_FILE_EXTENT2)" );
+
 		case 10:
 			return( "(APFS_TYPE_DIR_STATS)" );
 
@@ -918,4 +921,3 @@ int libfsapfs_debug_print_read_offsets(
 }
 
 #endif /* defined( HAVE_DEBUG_OUTPUT ) */
-

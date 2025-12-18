@@ -36,6 +36,7 @@
 #include "libfsapfs_libfcache.h"
 #include "libfsapfs_libfdata.h"
 #include "libfsapfs_object_map_btree.h"
+#include "libfsapfs_sealed_extent_tree.h"
 
 #if defined( __cplusplus )
 extern "C" {
@@ -69,9 +70,26 @@ struct libfsapfs_file_system_btree
 	 */
 	libfsapfs_object_map_btree_t *object_map_btree;
 
+	/* The B-tree root node object identifier (OID)
+	 */
+	uint64_t root_node_object_identifier;
+
 	/* The block number of B-tree root node
 	 */
 	uint64_t root_node_block_number;
+
+	/* The sealed extent tree root node block number
+	 */
+	uint64_t sealed_extent_tree_root_node_block_number;
+
+	/* The sealed extent tree (used to resolve FILE_EXTENT2 mappings)
+	 */
+	libfsapfs_sealed_extent_tree_t *sealed_extent_tree;
+
+	/* Branch node child identifier encoding:
+	 * 0 = unknown, 1 = absolute OID, 2 = relative to root node OID.
+	 */
+	uint8_t branch_child_oid_encoding;
 
 	/* Flag to indicate case folding should be used
 	 */
@@ -84,6 +102,7 @@ int libfsapfs_file_system_btree_initialize(
      libfsapfs_encryption_context_t *encryption_context,
      libfdata_vector_t *data_block_vector,
      libfsapfs_object_map_btree_t *object_map_btree,
+     uint64_t root_node_object_identifier,
      uint64_t root_node_block_number,
      uint8_t use_case_folding,
      libcerror_error_t **error );
@@ -95,6 +114,7 @@ int libfsapfs_file_system_btree_free(
 int libfsapfs_file_system_btree_get_sub_node_block_number_from_entry(
      libfsapfs_file_system_btree_t *file_system_btree,
      libbfio_handle_t *file_io_handle,
+     libfsapfs_btree_node_t *node,
      libfsapfs_btree_entry_t *entry,
      uint64_t transaction_identifier,
      uint64_t *sub_node_block_number,
@@ -112,6 +132,12 @@ int libfsapfs_file_system_btree_get_sub_node(
      libbfio_handle_t *file_io_handle,
      uint64_t sub_node_block_number,
      libfsapfs_btree_node_t **sub_node,
+     libcerror_error_t **error );
+
+int libfsapfs_file_system_btree_get_sealed_extent_tree(
+     libfsapfs_file_system_btree_t *file_system_btree,
+     libbfio_handle_t *file_io_handle,
+     libfsapfs_sealed_extent_tree_t **sealed_extent_tree,
      libcerror_error_t **error );
 
 int libfsapfs_file_system_btree_get_entry_from_node_by_identifier(
@@ -310,4 +336,3 @@ int libfsapfs_file_system_btree_get_inode_by_utf16_path(
 #endif
 
 #endif /* !defined( _LIBFSAPFS_FILE_SYSTEM_BTREE_H ) */
-

@@ -43,6 +43,8 @@ stamp-h[1-9]
 /aclocal.m4
 /autom4te.cache/
 /build
+/build-debug
+/build-verify
 /compile
 /confdefs.h
 /config.cache
@@ -103,7 +105,6 @@ stamp-h[1-9]
 /po/en@boldquot.header
 /po/en@quot.header
 /po/insert-header.sin
-/po/Makefile.in.in
 /po/Makevars
 /po/Makevars.template
 /po/POTFILES

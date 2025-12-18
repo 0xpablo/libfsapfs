@@ -413,6 +413,27 @@ int libfsapfs_volume_superblock_read_data(
 
 		return( -1 );
 	}
+
+	volume_superblock->sealed_extent_tree_root_node_object_identifier = 0;
+	volume_superblock->sealed_extent_tree_root_node_block_number      = 0;
+
+	/* On sealed volumes observed an extension at offset 0x400:
+	 *   +0x400 u64 root node object identifier (OID)
+	 *   +0x408 u64 root node block number
+	 */
+	if( is_snapshot == 0 )
+	{
+		if( data_size >= ( 0x400 + 16 ) )
+		{
+			byte_stream_copy_to_uint64_little_endian(
+			 &( data[ 0x400 + 0 ] ),
+			 volume_superblock->sealed_extent_tree_root_node_object_identifier );
+
+			byte_stream_copy_to_uint64_little_endian(
+			 &( data[ 0x400 + 8 ] ),
+			 volume_superblock->sealed_extent_tree_root_node_block_number );
+		}
+	}
 #if defined( HAVE_DEBUG_OUTPUT )
 	if( libcnotify_verbose != 0 )
 	{
@@ -726,6 +747,19 @@ int libfsapfs_volume_superblock_read_data(
 		 volume_superblock->volume_flags );
 		libfsapfs_debug_print_volume_flags(
 		 volume_superblock->volume_flags );
+
+		if( volume_superblock->sealed_extent_tree_root_node_block_number != 0 )
+		{
+			libcnotify_printf(
+			 "%s: sealed extent tree root node OID\t\t: %" PRIu64 "\n",
+			 function,
+			 volume_superblock->sealed_extent_tree_root_node_object_identifier );
+
+			libcnotify_printf(
+			 "%s: sealed extent tree root node block\t\t: %" PRIu64 "\n",
+			 function,
+			 volume_superblock->sealed_extent_tree_root_node_block_number );
+		}
 		libcnotify_printf(
 		 "\n" );
 
@@ -1109,4 +1143,3 @@ int libfsapfs_volume_superblock_get_utf16_volume_name(
 	}
 	return( 1 );
 }
-
