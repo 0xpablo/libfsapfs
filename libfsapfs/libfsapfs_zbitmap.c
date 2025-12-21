@@ -24,7 +24,12 @@
 #include <memory.h>
 #include <types.h>
 
+#if defined( HAVE_STDLIB_H ) || defined( WINAPI )
+#include <stdlib.h>
+#endif
+
 #include "libfsapfs_libcerror.h"
+#include "libfsapfs_libcnotify.h"
 #include "libfsapfs_zbitmap.h"
 
 #define LIBFSAPFS_ZBITMAP_MAGIC				0x094d425aUL
@@ -349,6 +354,8 @@ int libfsapfs_zbitmap_decompress(
 	int bitmap_index                   = 0;
 	int bit_index                      = 0;
 	int repeat_index                   = 0;
+	int zbitmap_debug                  = 0;
+	const char *zbitmap_debug_env      = NULL;
 
 	if( compressed_data == NULL )
 	{
@@ -394,24 +401,40 @@ int libfsapfs_zbitmap_decompress(
 
 		return( -1 );
 	}
+	zbitmap_debug_env = getenv( "LIBFSAPFS_ZBITMAP_DEBUG" );
+	if( ( zbitmap_debug_env != NULL )
+	 && ( zbitmap_debug_env[ 0 ] != 0 )
+	 && ( zbitmap_debug_env[ 0 ] != '0' ) )
+	{
+		zbitmap_debug = 1;
+	}
 	byte_stream_copy_to_uint32_little_endian(
 	 compressed_data,
 	 magic );
 
-	if( magic != LIBFSAPFS_ZBITMAP_MAGIC )
-	{
-		libcerror_error_set(
-		 error,
-		 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-		 LIBCERROR_RUNTIME_ERROR_UNSUPPORTED_VALUE,
-		 "%s: unsupported ZBITMAP signature.",
-		 function );
-
-		return( -1 );
-	}
 	output_capacity = *uncompressed_data_size;
-
-	current_offset = compressed_data + 4;
+	if( magic == LIBFSAPFS_ZBITMAP_MAGIC )
+	{
+		current_offset = compressed_data + 4;
+	}
+	else
+	{
+#if defined( HAVE_DEBUG_OUTPUT )
+		if( ( libcnotify_verbose != 0 ) || ( zbitmap_debug != 0 ) )
+		{
+			libcnotify_printf(
+			 "%s: ZBITMAP magic 0x%08" PRIx32 " (expected 0x%08" PRIx32 "); attempting raw mode\n",
+			 function,
+			 magic,
+			 (uint32_t) LIBFSAPFS_ZBITMAP_MAGIC );
+			libcnotify_print_data(
+			 compressed_data,
+			 ( compressed_data_size < 64 ) ? compressed_data_size : 64,
+			 LIBCNOTIFY_PRINT_DATA_FLAG_GROUP_DATA );
+		}
+#endif
+		current_offset = compressed_data;
+	}
 
 	while( current_offset < ( compressed_data + compressed_data_size ) )
 	{
@@ -905,4 +928,3 @@ int libfsapfs_zbitmap_decompress(
 
 	return( 1 );
 }
-

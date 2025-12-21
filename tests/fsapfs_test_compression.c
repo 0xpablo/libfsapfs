@@ -53,6 +53,10 @@ uint8_t fsapfs_test_compression_lzvn_uncompressed_data1[ 17 ] = {
 	0x06, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
 	0x0f };
 
+uint8_t fsapfs_test_compression_zbitmap_uncompressed_data1[ 17 ] = {
+	0xff, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+	0x0f };
+
 uint8_t fsapfs_test_compression_uncompressed_data1[ 16 ] = {
 	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f };
 
@@ -180,6 +184,40 @@ int fsapfs_test_decompress_data(
 	          fsapfs_test_compression_lzvn_uncompressed_data1,
 	          17,
 	          LIBFSAPFS_COMPRESSION_METHOD_LZVN,
+	          uncompressed_data,
+	          &uncompressed_data_size,
+	          &error );
+
+	FSAPFS_TEST_ASSERT_EQUAL_INT(
+	 "result",
+	 result,
+	 1 );
+
+	FSAPFS_TEST_ASSERT_EQUAL_SIZE(
+	 "uncompressed_data_size",
+	 uncompressed_data_size,
+	 (size_t) 16 );
+
+	FSAPFS_TEST_ASSERT_IS_NULL(
+	 "error",
+	 error );
+
+	result = memory_compare(
+	          uncompressed_data,
+	          fsapfs_test_compression_uncompressed_data1,
+	          16 );
+
+	FSAPFS_TEST_ASSERT_EQUAL_INT(
+	 "result",
+	 result,
+	 0 );
+
+	uncompressed_data_size = 16;
+
+	result = libfsapfs_decompress_data(
+	          fsapfs_test_compression_zbitmap_uncompressed_data1,
+	          17,
+	          LIBFSAPFS_COMPRESSION_METHOD_ZBITMAP,
 	          uncompressed_data,
 	          &uncompressed_data_size,
 	          &error );
@@ -562,4 +600,3 @@ on_error:
 
 #endif /* defined( __GNUC__ ) && !defined( LIBFSAPFS_DLL_IMPORT ) */
 }
-

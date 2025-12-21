@@ -4612,6 +4612,48 @@ int libfsapfs_internal_file_entry_get_data_stream(
 
 				goto on_error;
 		}
+#if defined( HAVE_DEBUG_OUTPUT )
+		if( libcnotify_verbose != 0 )
+		{
+			uint32_t entry_identifier = 0;
+			uint8_t *name = NULL;
+			size_t name_size = 0;
+			int has_name = 0;
+
+			if( internal_file_entry->directory_record != NULL )
+			{
+				entry_identifier = internal_file_entry->directory_record->identifier;
+				if( libfsapfs_directory_record_get_utf8_name_size(
+				     internal_file_entry->directory_record,
+				     &name_size,
+				     NULL ) == 1
+				 && name_size > 1 )
+				{
+					name = (uint8_t *) memory_allocate( name_size );
+					if( name != NULL
+					 && libfsapfs_directory_record_get_utf8_name(
+					     internal_file_entry->directory_record,
+					     name,
+					     name_size,
+					     NULL ) == 1 )
+					{
+						has_name = 1;
+					}
+				}
+			}
+			libcnotify_printf(
+			 "%s: compressed file entry: name=%s identifier=%" PRIu32 " compression_method=%d data_size=%" PRIu64 "\n",
+			 function,
+			 has_name ? (char *) name : "<unknown>",
+			 entry_identifier,
+			 internal_file_entry->compressed_data_header->compression_method,
+			 internal_file_entry->data_size );
+			if( name != NULL )
+			{
+				memory_free( name );
+			}
+		}
+#endif
 		if( ( internal_file_entry->compressed_data_header->compression_method == 4 )
 		 || ( internal_file_entry->compressed_data_header->compression_method == 8 )
 		 || ( internal_file_entry->compressed_data_header->compression_method == 12 )
