@@ -731,14 +731,14 @@ int libfsapfs_internal_volume_open_read(
 		     internal_volume->snapshots,
 		     error ) == -1 )
 		{
-			libcerror_error_set(
-			 error,
-			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-			 LIBCERROR_RUNTIME_ERROR_GET_FAILED,
-			 "%s: unable to retrieve snapshots.",
-			 function );
-
-			goto on_error;
+			if( error != NULL )
+			{
+				libcerror_error_free(
+				 error );
+			}
+			libfsapfs_snapshot_metadata_tree_free(
+			 &( internal_volume->snapshot_metadata_tree ),
+			 NULL );
 		}
 	}
 	if( ( internal_volume->superblock->incompatible_features_flags & 0x0000000000000020ULL ) != 0 )

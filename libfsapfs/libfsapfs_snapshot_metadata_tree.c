@@ -628,6 +628,17 @@ int libfsapfs_snapshot_metadata_tree_get_root_node(
 					goto on_error;
 				}
 			}
+		if( node->node_header == NULL )
+		{
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+			 LIBCERROR_RUNTIME_ERROR_VALUE_MISSING,
+			 "%s: missing B-tree node header.",
+			 function );
+
+			goto on_error;
+		}
 		if( ( node->node_header->flags & 0x0001 ) == 0 )
 		{
 			libcerror_error_set(
@@ -637,6 +648,17 @@ int libfsapfs_snapshot_metadata_tree_get_root_node(
 			 "%s: unsupported flags: 0x%04" PRIx16 ".",
 			 function,
 			 node->node_header->flags );
+
+			goto on_error;
+		}
+		if( node->footer == NULL )
+		{
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+			 LIBCERROR_RUNTIME_ERROR_VALUE_MISSING,
+			 "%s: missing B-tree footer.",
+			 function );
 
 			goto on_error;
 		}
