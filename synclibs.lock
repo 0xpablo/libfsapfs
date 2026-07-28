@@ -1,0 +1,22 @@
+# Local library synchronization lock.
+#
+# Each entry contains the library name, upstream tag and exact commit. The
+# synchronization scripts verify both refs before copying sources into this
+# repository. Update this file deliberately when refreshing nested libraries.
+libbfio 20260623 9603beb63808f194447cf7529f2e8f558f99b7ae
+libcaes 20260520 2c4416e2bfad5f344a4e04f7e0f0de261fbc3769
+libcdata 20260703 d8bd16d44110182060c8988e7338b5ee29554d8f
+libcerror 20260703 3c27e720a6cfe2a07b2c40a36971249c3479f6de
+libcfile 20260704 e2274ecced9f233d4a388d1a8d1666036b1d8cbd
+libclocale 20260703 dbcc7ab34e6be8f5ad09d7e12e66999c7e9e0513
+libcnotify 20260703 4068933706632dbf5fd77c02300c8c851acee646
+libcpath 20260703 6003e68102f4c1b238646b4a1501f287e0891dce
+libcsplit 20260703 1d91226e21ef3300f89b61fd1c6f6d6fb96e6071
+libcthreads 20260703 0afb2f58f980a52c0e8b660b234c27686683c854
+libfcache 20260520 90c637e9ce24b51cdec84f71ec5d2df18486dc28
+libfdata 20260521 ac8fc28ad0c9ca7054906e8dfbf0576787bdb130
+libfdatetime 20260521 13ef0ac2c66e27349efdec8301d168edefbdfc28
+libfguid 20260521 c8f80bf1880ee04052324c58686a00ce1bd591d2
+libfmos 20260520 ebbd2e73854ed75ec75f5c86f391bffa8908b825
+libhmac 20260522 056f50f329b8e86657b393f90b14030da40216cc
+libuna 20260602 ce9d128085a2637a2a2a568b5b8a8f9ad95a9687

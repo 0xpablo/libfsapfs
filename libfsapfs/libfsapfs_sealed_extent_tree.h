@@ -66,4 +66,3 @@ int libfsapfs_sealed_extent_tree_lookup(
 #endif
 
 #endif /* !defined( _LIBFSAPFS_SEALED_EXTENT_TREE_H ) */
-

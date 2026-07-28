@@ -8,6 +8,20 @@ EXIT_FAILURE=1;
 
 GIT_URL_PREFIX="https://github.com/libyal";
 LOCAL_LIBS="libbfio libcaes libcdata libcerror libcfile libclocale libcnotify libcpath libcsplit libcthreads libfcache libfdata libfdatetime libfguid libfmos libhmac libuna";
+LOCK_FILE="synclibs.lock";
+
+USE_HEAD=0;
+
+if test "$1" = "--use-head";
+then
+	USE_HEAD=1;
+
+elif ! test -f "${LOCK_FILE}";
+then
+	echo "Missing synchronization lock file: ${LOCK_FILE}";
+
+	exit ${EXIT_FAILURE};
+fi
 
 OLDIFS=$IFS;
 IFS=" ";
@@ -28,13 +42,43 @@ do
 	fi
 	(cd ${LOCAL_LIB}-$$ && git fetch --quiet --all --tags --prune)
 
-	LATEST_TAG=`cd ${LOCAL_LIB}-$$ && git tag --sort=-v:refname | head -n 1`;
-
-	if test -n ${LATEST_TAG} && test "$1" != "--use-head";
+	if test ${USE_HEAD} -eq 0;
 	then
-		echo "Synchronizing: ${LOCAL_LIB} from ${GIT_URL} tag ${LATEST_TAG}";
+		LOCKED_TAG=`awk -v local_lib="${LOCAL_LIB}" '$1 == local_lib { print $2; exit }' "${LOCK_FILE}"`;
+		LOCKED_COMMIT=`awk -v local_lib="${LOCAL_LIB}" '$1 == local_lib { print $3; exit }' "${LOCK_FILE}"`;
 
-		(cd ${LOCAL_LIB}-$$ && git checkout --quiet tags/${LATEST_TAG});
+		if test -z "${LOCKED_TAG}" || test -z "${LOCKED_COMMIT}";
+		then
+			echo "Missing synchronization lock for: ${LOCAL_LIB}";
+
+			rm -rf ${LOCAL_LIB}-$$;
+			IFS=$OLDIFS;
+
+			exit ${EXIT_FAILURE};
+		fi
+		echo "Synchronizing: ${LOCAL_LIB} from ${GIT_URL} tag ${LOCKED_TAG} commit ${LOCKED_COMMIT}";
+
+		if ! (cd ${LOCAL_LIB}-$$ && git checkout --quiet "${LOCKED_COMMIT}");
+		then
+			echo "Unable to check out locked commit for: ${LOCAL_LIB}";
+
+			rm -rf ${LOCAL_LIB}-$$;
+			IFS=$OLDIFS;
+
+			exit ${EXIT_FAILURE};
+		fi
+		RESOLVED_COMMIT=`cd ${LOCAL_LIB}-$$ && git rev-parse HEAD`;
+		RESOLVED_TAG_COMMIT=`cd ${LOCAL_LIB}-$$ && git rev-parse "refs/tags/${LOCKED_TAG}^{commit}"`;
+
+		if test "${RESOLVED_COMMIT}" != "${LOCKED_COMMIT}" || test "${RESOLVED_TAG_COMMIT}" != "${LOCKED_COMMIT}";
+		then
+			echo "Synchronization lock mismatch for: ${LOCAL_LIB}";
+
+			rm -rf ${LOCAL_LIB}-$$;
+			IFS=$OLDIFS;
+
+			exit ${EXIT_FAILURE};
+		fi
 	else
 		echo "Synchronizing: ${LOCAL_LIB} from ${GIT_URL} HEAD";
 	fi
@@ -201,4 +245,3 @@ done
 IFS=$OLDIFS;
 
 exit ${EXIT_SUCCESS};
-

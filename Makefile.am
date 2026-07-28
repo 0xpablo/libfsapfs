@@ -54,6 +54,11 @@ SETUP_PY_FILES = \
 	pyproject.toml \
 	pyproject.toml.in
 
+SYNCLIBS_FILES = \
+	synclibs.lock \
+	synclibs.ps1 \
+	synclibs.sh
+
 SPEC_FILES = \
 	libfsapfs.spec \
 	libfsapfs.spec.in
@@ -63,6 +68,7 @@ EXTRA_DIST = \
 	$(GETTEXT_FILES) \
 	$(PKGCONFIG_FILES) \
 	$(SETUP_PY_FILES) \
+	$(SYNCLIBS_FILES) \
 	$(SPEC_FILES)
 
 DISTCLEANFILES = \
@@ -109,4 +115,3 @@ library:
 	(cd $(srcdir)/libcaes && $(MAKE) $(AM_MAKEFLAGS))
 	(cd $(srcdir)/libfsapfs && $(MAKE) $(AM_MAKEFLAGS))
 	(cd $(srcdir)/po && $(MAKE) $(AM_MAKEFLAGS))
-

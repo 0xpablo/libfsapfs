@@ -43,4 +43,3 @@ int libfsapfs_zbitmap_decompress(
 #endif
 
 #endif /* !defined( _LIBFSAPFS_ZBITMAP_H ) */
-

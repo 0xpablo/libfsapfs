@@ -9,12 +9,45 @@ Param (
 $GitUrlPrefix = "https://github.com/libyal"
 $LocalLibs = "libbfio libcaes libcdata libcerror libcfile libclocale libcnotify libcpath libcsplit libcthreads libfcache libfdata libfdatetime libfguid libfmos libhmac libuna"
 $LocalLibs = ${LocalLibs} -split " "
+$LockFile = "synclibs.lock"
+$SyncLocks = @{}
 
 $Git = "git"
 $WinFlex = "..\win_flex_bison\win_flex.exe"
 $WinBison = "..\win_flex_bison\win_bison.exe"
 
 $Result = 0
+
+If (-Not (${UseHead}))
+{
+	If (-Not (Test-Path -Path ${LockFile}))
+	{
+		Write-Warning "Missing synchronization lock file: ${LockFile}"
+
+		Exit 1
+	}
+	ForEach (${Line} in Get-Content -Path ${LockFile})
+	{
+		${Line} = ${Line}.Trim()
+
+		If (-Not (${Line}) -or ${Line}.StartsWith("#"))
+		{
+			Continue
+		}
+		${Fields} = ${Line} -split "\s+"
+
+		If (${Fields}.Count -ne 3)
+		{
+			Write-Warning "Malformed synchronization lock: ${Line}"
+
+			Exit 1
+		}
+		${SyncLocks}[${Fields}[0]] = @{
+			Tag = ${Fields}[1]
+			Commit = ${Fields}[2]
+		}
+	}
+}
 
 ForEach (${LocalLib} in ${LocalLibs})
 {
@@ -44,13 +77,32 @@ ForEach (${LocalLib} in ${LocalLibs})
 	{
 		$Output = Invoke-Expression -Command "${Git} fetch --quiet --all --tags --prune 2>&1"
 
-		$LatestTag = Invoke-Expression -Command "${Git} tag --sort=-v:refname 2>&1" | Select-Object -First 1
-
-		If (${LatestTag} -and -not ${UseHead})
+		If (-Not (${UseHead}))
 		{
-			Write-Host "Synchronizing: ${LocalLib} from ${GitUrl} tag ${LatestTag}"
+			${SyncLock} = ${SyncLocks}[${LocalLib}]
 
-			$Output = Invoke-Expression -Command "${Git} checkout --quiet tags/${LatestTag} 2>&1"
+			If (-Not (${SyncLock}))
+			{
+				Write-Warning "Missing synchronization lock for: ${LocalLib}"
+
+				$Result = 1
+
+				Continue
+			}
+			Write-Host "Synchronizing: ${LocalLib} from ${GitUrl} tag $(${SyncLock}.Tag) commit $(${SyncLock}.Commit)"
+
+			$Output = Invoke-Expression -Command "${Git} checkout --quiet $(${SyncLock}.Commit) 2>&1"
+			${ResolvedCommit} = Invoke-Expression -Command "${Git} rev-parse HEAD 2>&1"
+			${ResolvedTagCommit} = Invoke-Expression -Command "${Git} rev-parse refs/tags/$(${SyncLock}.Tag)^{commit} 2>&1"
+
+			If (${ResolvedCommit} -ne ${SyncLock}.Commit -or ${ResolvedTagCommit} -ne ${SyncLock}.Commit)
+			{
+				Write-Warning "Synchronization lock mismatch for: ${LocalLib}"
+
+				$Result = 1
+
+				Continue
+			}
 		}
 		Else
 		{

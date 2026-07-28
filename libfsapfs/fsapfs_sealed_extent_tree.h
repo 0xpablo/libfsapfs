@@ -69,4 +69,3 @@ struct fsapfs_sealed_extent_btree_value
 #endif
 
 #endif /* !defined( _FSAPFS_SEALED_EXTENT_TREE_H ) */
-
