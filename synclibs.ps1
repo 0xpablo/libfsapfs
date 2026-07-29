@@ -93,7 +93,7 @@ ForEach (${LocalLib} in ${LocalLibs})
 
 			$Output = Invoke-Expression -Command "${Git} checkout --quiet $(${SyncLock}.Commit) 2>&1"
 			${ResolvedCommit} = Invoke-Expression -Command "${Git} rev-parse HEAD 2>&1"
-			${ResolvedTagCommit} = Invoke-Expression -Command "${Git} rev-parse refs/tags/$(${SyncLock}.Tag)^{commit} 2>&1"
+			${ResolvedTagCommit} = & ${Git} rev-parse --verify "refs/tags/$(${SyncLock}.Tag)^{commit}" 2>&1
 
 			If (${ResolvedCommit} -ne ${SyncLock}.Commit -or ${ResolvedTagCommit} -ne ${SyncLock}.Commit)
 			{
